@@ -102,7 +102,7 @@ pip install -r requirements.txt
 
 - [SETUP.md](SETUP.md) - Подробное руководство по установке
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Архитектура приложения
-- [README.md](README.md) - Общая информация
+- [../README.md](../README.md) - Общая информация
 
 ---
 

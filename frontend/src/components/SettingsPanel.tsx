@@ -1,5 +1,5 @@
+import { AlertCircle, CheckCircle, FolderOpen, Key, Save } from 'lucide-react'
 import { useState } from 'react'
-import { Save, Key, FolderOpen, CheckCircle, AlertCircle } from 'lucide-react'
 import './SettingsPanel.css'
 
 interface SettingsPanelProps {
@@ -17,17 +17,42 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null)
 
   const testConnection = async () => {
+    if (!token) {
+      setTestResult('error')
+      return
+    }
+
     setIsTesting(true)
     setTestResult(null)
 
-    // TODO: Реальная проверка подключения к API
-    setTimeout(() => {
-      const success = token.length > 0
-      setTestResult(success ? 'success' : 'error')
-      setIsConnected(success)
-      onConnectionChange(success)
+    try {
+      const response = await fetch('http://localhost:8000/api/auth/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          token: token
+        })
+      })
+
+      if (response.ok) {
+        setTestResult('success')
+        setIsConnected(true)
+        onConnectionChange(true)
+      } else {
+        setTestResult('error')
+        setIsConnected(false)
+        onConnectionChange(false)
+      }
+    } catch (error) {
+      console.error('Ошибка проверки подключения:', error)
+      setTestResult('error')
+      setIsConnected(false)
+      onConnectionChange(false)
+    } finally {
       setIsTesting(false)
-    }, 1500)
+    }
   }
 
   const saveSettings = async () => {
@@ -50,17 +75,17 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
           <Key size={20} />
           Подключение к Яндекс.Музыке
         </h3>
-        
+
         <div className="form-group">
           <label>Токен авторизации:</label>
           <div className="token-input-group">
-            <input 
+            <input
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="Введите токен Яндекс.Музыки"
             />
-            <button 
+            <button
               onClick={testConnection}
               disabled={isTesting || !token}
               className="test-button"
@@ -68,7 +93,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
               {isTesting ? 'Проверка...' : 'Проверить'}
             </button>
           </div>
-          
+
           {testResult && (
             <div className={`test-result ${testResult}`}>
               {testResult === 'success' ? (
@@ -102,7 +127,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
         <div className="form-group">
           <label>Путь для сохранения:</label>
           <div className="path-input-group">
-            <input 
+            <input
               type="text"
               value={downloadPath}
               onChange={(e) => setDownloadPath(e.target.value)}
@@ -129,7 +154,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
 
         <div className="form-group checkbox-group">
           <label className="checkbox-label">
-            <input 
+            <input
               type="checkbox"
               checked={autoSync}
               onChange={(e) => setAutoSync(e.target.checked)}
@@ -141,7 +166,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
         {autoSync && (
           <div className="form-group">
             <label>Интервал синхронизации (часы):</label>
-            <input 
+            <input
               type="number"
               min="1"
               max="168"
@@ -154,10 +179,10 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
 
       <div className="settings-section">
         <h3>Структура файлов</h3>
-        
+
         <div className="form-group">
           <label>Шаблон имени файла:</label>
-          <input 
+          <input
             type="text"
             defaultValue="{artist} - {title}"
             placeholder="{artist} - {title}"
@@ -169,7 +194,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
 
         <div className="form-group">
           <label>Структура папок:</label>
-          <input 
+          <input
             type="text"
             defaultValue="{artist}/{album}"
             placeholder="{artist}/{album}"

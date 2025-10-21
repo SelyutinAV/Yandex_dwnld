@@ -1,20 +1,41 @@
 """
 Главный модуль FastAPI приложения для загрузки музыки с Яндекс.Музыки
 """
-from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+import asyncio
 from dotenv import load_dotenv
+
+# Импорт наших модулей
+from yandex_client import YandexMusicClient
+from downloader import DownloadManager
+from database import init_database, get_file_statistics
 
 # Загружаем переменные окружения
 load_dotenv()
 
+# Глобальные переменные
+yandex_client: Optional[YandexMusicClient] = None
+download_manager: Optional[DownloadManager] = None
+db_session = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Управление жизненным циклом приложения"""
+    # Startup
+    await init_app()
+    yield
+    # Shutdown (если нужно)
+
 app = FastAPI(
     title="Yandex Music Downloader API",
     description="API для скачивания музыки из Яндекс.Музыки",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS настройки для работы с фронтендом
@@ -54,6 +75,26 @@ class Settings(BaseModel):
     autoSync: bool = False
     syncInterval: int = 24
 
+class TokenTest(BaseModel):
+    token: str
+
+# Инициализация приложения
+async def init_app():
+    """Инициализация приложения"""
+    global yandex_client, download_manager, db_session
+    
+    # Инициализация базы данных
+    db_session = init_database()
+    
+    # Получение токена из переменных окружения
+    token = os.getenv("YANDEX_TOKEN")
+    download_path = os.getenv("DOWNLOAD_PATH", "/home/urch/Music/Yandex")
+    
+    if token and token != "your_yandex_music_token_here":
+        yandex_client = YandexMusicClient(token)
+        download_manager = DownloadManager(yandex_client, download_path)
+
+
 
 @app.get("/")
 async def root():
@@ -68,15 +109,20 @@ async def health_check():
 
 
 @app.post("/api/auth/test")
-async def test_connection(token: str):
+async def test_connection(request: TokenTest):
     """Проверка подключения к Яндекс.Музыке"""
     try:
-        # TODO: Реализовать проверку токена через yandex-music API
-        if not token:
+        if not request.token:
             raise HTTPException(status_code=400, detail="Токен не указан")
         
-        # Здесь будет проверка токена
-        return {"status": "success", "message": "Подключение успешно"}
+        # Создаем временный клиент для проверки
+        test_client = YandexMusicClient(request.token)
+        success = test_client.connect()
+        
+        if success:
+            return {"status": "success", "message": "Подключение успешно"}
+        else:
+            raise HTTPException(status_code=401, detail="Не удалось подключиться к Яндекс.Музыке")
     except Exception as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -84,22 +130,47 @@ async def test_connection(token: str):
 @app.get("/api/playlists", response_model=List[Playlist])
 async def get_playlists():
     """Получить список плейлистов пользователя"""
-    # TODO: Реализовать получение плейлистов через yandex-music API
-    return []
+    try:
+        if not yandex_client:
+            raise HTTPException(status_code=400, detail="Клиент не инициализирован. Проверьте токен в настройках.")
+        
+        playlists = yandex_client.get_playlists()
+        return [Playlist(**playlist) for playlist in playlists]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/playlists/{playlist_id}/tracks", response_model=List[Track])
 async def get_playlist_tracks(playlist_id: str):
     """Получить треки из плейлиста"""
-    # TODO: Реализовать получение треков
-    return []
+    try:
+        if not yandex_client:
+            raise HTTPException(status_code=400, detail="Клиент не инициализирован. Проверьте токен в настройках.")
+        
+        tracks = yandex_client.get_playlist_tracks(playlist_id)
+        return [Track(**track) for track in tracks]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/download")
 async def start_download(task: DownloadTask):
     """Начать загрузку плейлиста"""
-    # TODO: Реализовать фоновую задачу загрузки
-    return {"status": "started", "playlistId": task.playlistId}
+    try:
+        if not download_manager:
+            raise HTTPException(status_code=400, detail="Менеджер загрузок не инициализирован")
+        
+        # Запускаем загрузку в фоне
+        asyncio.create_task(
+            download_manager.download_playlist(
+                task.playlistId, 
+                task.quality
+            )
+        )
+        
+        return {"status": "started", "playlistId": task.playlistId}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/downloads")
@@ -112,13 +183,14 @@ async def get_downloads():
 @app.get("/api/files/stats")
 async def get_file_stats():
     """Получить статистику загруженных файлов"""
-    # TODO: Реализовать анализ файлов
-    return {
-        "totalFiles": 0,
-        "totalSize": 0,
-        "byFormat": {},
-        "byQuality": {}
-    }
+    try:
+        if not download_manager:
+            raise HTTPException(status_code=400, detail="Менеджер загрузок не инициализирован")
+        
+        stats = download_manager.analyze_directory()
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/settings")

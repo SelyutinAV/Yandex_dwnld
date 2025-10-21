@@ -19,7 +19,7 @@ class YandexMusicClient:
         self.token = token
         self.client: Optional[Client] = None
         
-    async def connect(self) -> bool:
+    def connect(self) -> bool:
         """
         Подключение к Яндекс.Музыке
         
@@ -33,7 +33,7 @@ class YandexMusicClient:
             print(f"Ошибка подключения: {e}")
             return False
     
-    async def get_playlists(self) -> List[dict]:
+    def get_playlists(self) -> List[dict]:
         """
         Получить плейлисты пользователя
         
@@ -41,7 +41,7 @@ class YandexMusicClient:
             Список плейлистов
         """
         if not self.client:
-            await self.connect()
+            self.connect()
             
         try:
             playlists = self.client.users_playlists_list()
@@ -62,7 +62,7 @@ class YandexMusicClient:
             print(f"Ошибка получения плейлистов: {e}")
             return []
     
-    async def get_playlist_tracks(self, playlist_id: str) -> List[dict]:
+    def get_playlist_tracks(self, playlist_id: str) -> List[dict]:
         """
         Получить треки из плейлиста
         
@@ -73,7 +73,7 @@ class YandexMusicClient:
             Список треков
         """
         if not self.client:
-            await self.connect()
+            self.connect()
             
         try:
             playlist = self.client.users_playlists(playlist_id)
@@ -96,7 +96,7 @@ class YandexMusicClient:
             print(f"Ошибка получения треков: {e}")
             return []
     
-    async def download_track(
+    def download_track(
         self, 
         track_id: str, 
         output_path: str,
@@ -114,7 +114,7 @@ class YandexMusicClient:
             Путь к скачанному файлу или None в случае ошибки
         """
         if not self.client:
-            await self.connect()
+            self.connect()
             
         try:
             track = self.client.tracks([track_id])[0]

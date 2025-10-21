@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { RefreshCw, Download, CheckCircle, Music } from 'lucide-react'
+import { CheckCircle, Download, Music, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import './PlaylistManager.css'
 
 interface Playlist {
@@ -20,38 +20,31 @@ function PlaylistManager() {
   const loadPlaylists = async () => {
     setLoading(true)
     try {
-      // TODO: Заменить на реальный API запрос
-      // const response = await fetch('/api/playlists')
-      // const data = await response.json()
-      
-      // Пример данных для демонстрации
-      setTimeout(() => {
-        setPlaylists([
-          {
-            id: '1',
-            title: 'Любимые треки',
-            trackCount: 156,
-            isSynced: true,
-            lastSync: '2025-10-20T10:30:00'
-          },
-          {
-            id: '2',
-            title: 'Audiophile Collection',
-            trackCount: 89,
-            isSynced: false
-          },
-          {
-            id: '3',
-            title: 'Jazz Essentials',
-            trackCount: 234,
-            isSynced: true,
-            lastSync: '2025-10-19T15:20:00'
-          }
-        ])
-        setLoading(false)
-      }, 1000)
+      const response = await fetch('http://localhost:8000/api/playlists')
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const data = await response.json()
+      setPlaylists(data)
     } catch (error) {
       console.error('Ошибка загрузки плейлистов:', error)
+      // Показываем пример данных в случае ошибки
+      setPlaylists([
+        {
+          id: '1',
+          title: 'Любимые треки (демо)',
+          trackCount: 156,
+          isSynced: true,
+          lastSync: '2025-10-20T10:30:00'
+        },
+        {
+          id: '2',
+          title: 'Audiophile Collection (демо)',
+          trackCount: 89,
+          isSynced: false
+        }
+      ])
+    } finally {
       setLoading(false)
     }
   }
@@ -72,9 +65,33 @@ function PlaylistManager() {
 
   const syncSelectedPlaylists = async () => {
     if (selectedPlaylists.size === 0) return
-    
-    console.log('Синхронизация плейлистов:', Array.from(selectedPlaylists))
-    // TODO: Отправить запрос на синхронизацию
+
+    try {
+      for (const playlistId of selectedPlaylists) {
+        const response = await fetch('http://localhost:8000/api/download', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            playlistId: playlistId,
+            quality: 'lossless'
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const result = await response.json()
+        console.log(`Синхронизация плейлиста ${playlistId}:`, result)
+      }
+
+      // Обновляем список плейлистов после синхронизации
+      await loadPlaylists()
+    } catch (error) {
+      console.error('Ошибка синхронизации плейлистов:', error)
+    }
   }
 
   const formatDate = (dateString?: string) => {
@@ -92,7 +109,7 @@ function PlaylistManager() {
             <RefreshCw size={18} className={loading ? 'spin' : ''} />
             Обновить
           </button>
-          <button 
+          <button
             onClick={syncSelectedPlaylists}
             disabled={selectedPlaylists.size === 0}
             className="primary"
@@ -111,7 +128,7 @@ function PlaylistManager() {
       ) : (
         <div className="playlist-grid">
           {playlists.map(playlist => (
-            <div 
+            <div
               key={playlist.id}
               className={`playlist-card ${selectedPlaylists.has(playlist.id) ? 'selected' : ''}`}
               onClick={() => togglePlaylistSelection(playlist.id)}

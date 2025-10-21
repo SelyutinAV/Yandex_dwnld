@@ -50,6 +50,7 @@ dist-ssr/
 *.db
 *.sqlite
 *.sqlite3
+yandex_music.db
 
 # Downloaded music files
 Music/

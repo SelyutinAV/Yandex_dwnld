@@ -82,6 +82,10 @@ def init_database(db_url: str = None):
     if not db_url:
         db_url = os.getenv('DATABASE_URL', 'sqlite:///yandex_music.db')
     
+    # Исправляем URL для синхронного SQLite
+    if 'sqlite+aiosqlite' in db_url:
+        db_url = db_url.replace('sqlite+aiosqlite', 'sqlite')
+    
     engine = create_engine(db_url, echo=False)
     Base.metadata.create_all(engine)
     

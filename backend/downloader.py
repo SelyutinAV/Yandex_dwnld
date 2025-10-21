@@ -42,7 +42,7 @@ class DownloadManager:
             progress_callback: Функция для отслеживания прогресса
         """
         # Получаем треки плейлиста
-        tracks = await self.client.get_playlist_tracks(playlist_id)
+        tracks = self.client.get_playlist_tracks(playlist_id)
         total_tracks = len(tracks)
         
         results = {
@@ -69,7 +69,7 @@ class DownloadManager:
                 save_path.mkdir(parents=True, exist_ok=True)
                 
                 # Скачиваем трек
-                file_path = await self.client.download_track(
+                file_path = self.client.download_track(
                     track['id'],
                     str(save_path),
                     quality
@@ -96,7 +96,10 @@ class DownloadManager:
             
             # Вызываем callback для обновления прогресса
             if progress_callback:
-                await progress_callback(index, total_tracks, track)
+                if asyncio.iscoroutinefunction(progress_callback):
+                    await progress_callback(index, total_tracks, track)
+                else:
+                    progress_callback(index, total_tracks, track)
         
         return results
     
@@ -126,7 +129,7 @@ class DownloadManager:
             save_path = self.download_path / artist_folder / album_folder
             save_path.mkdir(parents=True, exist_ok=True)
             
-            file_path = await self.client.download_track(
+            file_path = self.client.download_track(
                 track_id,
                 str(save_path),
                 quality

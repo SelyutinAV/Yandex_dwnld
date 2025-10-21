@@ -1,5 +1,5 @@
+import { FileAudio, FolderOpen, HardDrive, Music, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import { FolderOpen, FileAudio, HardDrive, Music, RefreshCw } from 'lucide-react'
 import './FileAnalyzer.css'
 
 interface FileStats {
@@ -62,10 +62,19 @@ function FileAnalyzer() {
 
   const analyzeFiles = async () => {
     setLoading(true)
-    // TODO: Запрос к API для анализа файлов
-    setTimeout(() => {
+    try {
+      const response = await fetch('http://localhost:8000/api/files/stats')
+      if (response.ok) {
+        const data = await response.json()
+        setStats(data)
+      } else {
+        console.error('Ошибка получения статистики файлов')
+      }
+    } catch (error) {
+      console.error('Ошибка анализа файлов:', error)
+    } finally {
       setLoading(false)
-    }, 1500)
+    }
   }
 
   const formatSize = (mb: number) => {
@@ -93,8 +102,8 @@ function FileAnalyzer() {
       <div className="path-selector">
         <label>Путь к загруженным файлам:</label>
         <div className="path-input-group">
-          <input 
-            type="text" 
+          <input
+            type="text"
             value={downloadPath}
             onChange={(e) => setDownloadPath(e.target.value)}
             placeholder="/path/to/music"
@@ -151,10 +160,10 @@ function FileAnalyzer() {
               </div>
               <div className="format-size">{formatSize(data.size)}</div>
               <div className="format-bar">
-                <div 
+                <div
                   className="format-bar-fill"
-                  style={{ 
-                    width: `${(data.count / stats.totalFiles) * 100}%` 
+                  style={{
+                    width: `${(data.count / stats.totalFiles) * 100}%`
                   }}
                 ></div>
               </div>
