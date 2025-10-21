@@ -40,6 +40,7 @@ class DatabaseManager:
                     name TEXT NOT NULL,
                     token TEXT NOT NULL,
                     token_type TEXT NOT NULL,
+                    username TEXT,
                     is_active INTEGER DEFAULT 0,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     last_used TEXT
@@ -68,7 +69,7 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id, name, token, token_type, is_active, created_at, last_used
+                SELECT id, name, token, token_type, username, is_active, created_at, last_used
                 FROM saved_tokens
                 ORDER BY is_active DESC, last_used DESC
             """)
@@ -79,9 +80,10 @@ class DatabaseManager:
                     "id": row[0],
                     "name": row[1],
                     "token_type": row[3],
-                    "is_active": bool(row[4]),
-                    "created_at": row[5],
-                    "last_used": row[6],
+                    "username": row[4],
+                    "is_active": bool(row[5]),
+                    "created_at": row[6],
+                    "last_used": row[7],
                     "token_preview": row[2][:20] + "..." if len(row[2]) > 20 else row[2]
                 })
             
@@ -92,7 +94,7 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id, name, token, token_type, created_at, last_used
+                SELECT id, name, token, token_type, username, created_at, last_used
                 FROM saved_tokens
                 WHERE is_active = 1
                 LIMIT 1
@@ -105,12 +107,13 @@ class DatabaseManager:
                     "name": row[1],
                     "token": row[2],
                     "token_type": row[3],
-                    "created_at": row[4],
-                    "last_used": row[5]
+                    "username": row[4],
+                    "created_at": row[5],
+                    "last_used": row[6]
                 }
             return None
     
-    def save_token(self, name: str, token: str, token_type: str, is_active: bool = True) -> int:
+    def save_token(self, name: str, token: str, token_type: str, username: str = None, is_active: bool = True) -> int:
         """Сохранить токен"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -129,16 +132,16 @@ class DatabaseManager:
                 # Обновляем существующий токен
                 cursor.execute("""
                     UPDATE saved_tokens 
-                    SET token = ?, token_type = ?, is_active = ?, last_used = ?
+                    SET token = ?, token_type = ?, username = ?, is_active = ?, last_used = ?
                     WHERE id = ?
-                """, (token, token_type, int(is_active), now, existing[0]))
+                """, (token, token_type, username, int(is_active), now, existing[0]))
                 token_id = existing[0]
             else:
                 # Создаем новый токен
                 cursor.execute("""
-                    INSERT INTO saved_tokens (name, token, token_type, is_active, created_at, last_used)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (name, token, token_type, int(is_active), now, now))
+                    INSERT INTO saved_tokens (name, token, token_type, username, is_active, created_at, last_used)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (name, token, token_type, username, int(is_active), now, now))
                 token_id = cursor.lastrowid
             
             conn.commit()

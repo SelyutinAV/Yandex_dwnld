@@ -32,10 +32,14 @@ class YandexMusicClient:
                 # OAuth токен
                 self.client = Client(self.token).init()
             elif self.token.startswith('3:'):
-                # Session_id токен - используем cookies
-                self.client = Client().init()
-                # Устанавливаем session_id вручную
-                self.client._session_id = self.token
+                # Session_id токен - пробуем использовать как OAuth
+                try:
+                    self.client = Client(self.token).init()
+                except:
+                    # Если не получилось, пробуем другой способ
+                    self.client = Client().init()
+                    # Устанавливаем session_id вручную
+                    self.client._session_id = self.token
             else:
                 # Пробуем как OAuth токен
                 self.client = Client(self.token).init()
@@ -46,18 +50,32 @@ class YandexMusicClient:
                 try:
                     account = self.client.account_status()
                     if account:
+                        print(f"Успешно подключились к аккаунту: {account.account.login}")
                         return True
-                except:
-                    pass
+                except Exception as account_error:
+                    print(f"Ошибка проверки аккаунта: {account_error}")
+                    # Попробуем другой способ проверки
+                    try:
+                        # Попробуем получить информацию о пользователе
+                        user_info = self.client.me()
+                        if user_info:
+                            print(f"Успешно подключились к пользователю: {user_info.login}")
+                            return True
+                    except Exception as user_error:
+                        print(f"Ошибка получения информации о пользователе: {user_error}")
+                        pass
             
             return False
         except Exception as e:
             print(f"Ошибка подключения: {e}")
             return False
     
-    def get_playlists(self) -> List[dict]:
+    def get_playlists(self, username: str = None) -> List[dict]:
         """
         Получить плейлисты пользователя
+        
+        Args:
+            username: Имя пользователя для получения плейлистов (если не указано, будет определено автоматически)
         
         Returns:
             Список плейлистов
@@ -72,22 +90,78 @@ class YandexMusicClient:
             if not self.client:
                 raise Exception("Клиент не инициализирован")
             
-            playlists = self.client.users_playlists_list()
+            # Проверяем авторизацию
+            try:
+                account = self.client.account_status()
+                if not account:
+                    print("❌ Не удалось получить информацию об аккаунте")
+                    return []
+                
+                print(f"✅ Аккаунт получен: {account.account.login if account.account.login else 'Без логина'}")
+                
+                # Если нет UID, но есть логин, попробуем получить плейлисты с логином
+                if not account.account.uid and account.account.login:
+                    print(f"⚠️  UID не найден, но есть логин: {account.account.login}")
+                    print("   Пробуем получить плейлисты с логином...")
+                elif not account.account.uid and not account.account.login:
+                    print("⚠️  UID и логин не найдены, пробуем с переданным логином...")
+                    if username:
+                        print(f"   Используем переданный логин: {username}")
+                    else:
+                        print("   Логин не передан, попробуем без параметров")
+                    
+            except Exception as auth_error:
+                print(f"❌ Ошибка проверки авторизации: {auth_error}")
+                return []
+            
+            # Получаем плейлисты пользователя
+            try:
+                # Сначала пробуем с UID
+                if account.account.uid:
+                    playlists = self.client.users_playlists_list(account.account.uid)
+                else:
+                    raise Exception("UID не найден")
+            except Exception as playlist_error:
+                print(f"❌ Ошибка получения плейлистов с UID: {playlist_error}")
+                # Попробуем с логином пользователя
+                try:
+                    if account.account.login:
+                        playlists = self.client.users_playlists_list(account.account.login)
+                    else:
+                        raise Exception("Логин не найден")
+                except Exception as login_error:
+                    print(f"❌ Ошибка получения плейлистов с логином: {login_error}")
+                    # Попробуем с переданным логином
+                    try:
+                        if username:
+                            print(f"🔄 Пробуем с переданным логином: {username}")
+                            playlists = self.client.users_playlists_list(username)
+                        else:
+                            raise Exception("Логин не передан")
+                    except Exception as username_error:
+                        print(f"❌ Ошибка получения плейлистов с переданным логином: {username_error}")
+                        # Попробуем без параметров
+                        try:
+                            playlists = self.client.users_playlists_list()
+                        except Exception as fallback_error:
+                            print(f"❌ Ошибка получения плейлистов (fallback): {fallback_error}")
+                            return []
+            
             result = []
             
-            print(f"Найдено {len(playlists)} плейлистов")
+            print(f"✅ Найдено {len(playlists)} плейлистов")
             
             for playlist in playlists:
                 try:
                     playlist_data = {
                         'id': str(playlist.kind),
                         'title': playlist.title or 'Без названия',
-                        'trackCount': playlist.track_count or 0,
+                        'track_count': playlist.track_count or 0,
                         'cover': self._get_cover_url(playlist),
                         'isSynced': False,
                         'lastSync': None,
                         'description': getattr(playlist, 'description', None),
-                        'owner': getattr(playlist, 'owner', {}).get('login', 'Unknown') if hasattr(playlist, 'owner') else 'Unknown',
+                        'owner': getattr(playlist.owner, 'login', 'Unknown') if hasattr(playlist, 'owner') and playlist.owner else 'Unknown',
                         'created': getattr(playlist, 'created', None),
                         'modified': getattr(playlist, 'modified', None)
                     }
@@ -96,11 +170,61 @@ class YandexMusicClient:
                     print(f"Ошибка обработки плейлиста {getattr(playlist, 'title', 'Unknown')}: {playlist_error}")
                     continue
             
-            print(f"Успешно обработано {len(result)} плейлистов")
+            # Добавляем плейлист "Мне нравится"
+            try:
+                print("🔄 Получаем плейлист 'Мне нравится'...")
+                
+                # Пробуем разные способы получения лайков
+                liked_tracks = None
+                
+                # Способ 1: Без параметров (для текущего пользователя)
+                try:
+                    liked_tracks = self.client.users_likes_tracks()
+                    print("✅ Получены лайки без параметров")
+                except Exception as e1:
+                    print(f"❌ Способ 1 не сработал: {e1}")
+                    
+                    # Способ 2: С UID из аккаунта
+                    if account.account.uid:
+                        try:
+                            liked_tracks = self.client.users_likes_tracks(account.account.uid)
+                            print(f"✅ Получены лайки с UID: {account.account.uid}")
+                        except Exception as e2:
+                            print(f"❌ Способ 2 не сработал: {e2}")
+                    
+                    # Способ 3: С логином пользователя
+                    if not liked_tracks and username:
+                        try:
+                            liked_tracks = self.client.users_likes_tracks(username)
+                            print(f"✅ Получены лайки с логином: {username}")
+                        except Exception as e3:
+                            print(f"❌ Способ 3 не сработал: {e3}")
+                
+                if liked_tracks and len(liked_tracks) > 0:
+                    likes_playlist = {
+                        'id': 'likes',
+                        'title': 'Мне нравится',
+                        'track_count': len(liked_tracks),
+                        'cover': None,
+                        'isSynced': False,
+                        'lastSync': None,
+                        'description': 'Треки, которые вам нравятся',
+                        'owner': account.account.login if account.account.login else username or 'Unknown',
+                        'created': None,
+                        'modified': None
+                    }
+                    result.insert(0, likes_playlist)  # Добавляем в начало списка
+                    print(f"✅ Плейлист 'Мне нравится' добавлен: {len(liked_tracks)} треков")
+                else:
+                    print("⚠️  Плейлист 'Мне нравится' пуст или недоступен")
+            except Exception as likes_error:
+                print(f"❌ Общая ошибка получения плейлиста 'Мне нравится': {likes_error}")
+            
+            print(f"✅ Успешно обработано {len(result)} плейлистов")
             return result
             
         except Exception as e:
-            print(f"Ошибка получения плейлистов: {e}")
+            print(f"❌ Ошибка получения плейлистов: {e}")
             import traceback
             traceback.print_exc()
             return []

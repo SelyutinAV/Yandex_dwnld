@@ -86,6 +86,7 @@ class TokenTest(BaseModel):
 class SaveTokenRequest(BaseModel):
     name: str
     token: str
+    username: Optional[str] = None
 
 class ActivateTokenRequest(BaseModel):
     token_id: int
@@ -257,7 +258,7 @@ async def save_token_endpoint(request: SaveTokenRequest):
         token_type = "oauth" if request.token.startswith('y0_') else "session_id"
         
         # Сохраняем токен
-        token_id = db_manager.save_token(request.name, request.token, token_type, is_active=True)
+        token_id = db_manager.save_token(request.name, request.token, token_type, request.username, is_active=True)
         
         # Обновляем глобальный клиент
         update_yandex_client(request.token)
@@ -344,7 +345,17 @@ async def get_playlists():
         if not yandex_client:
             raise HTTPException(status_code=400, detail="Клиент не инициализирован. Проверьте токен в настройках.")
         
-        playlists = yandex_client.get_playlists()
+        # Получаем username из активного токена
+        username = None
+        try:
+            active_token = db_manager.get_active_token()
+            if active_token and active_token.get('username'):
+                username = active_token['username']
+                print(f"Используем username из токена: {username}")
+        except Exception as e:
+            print(f"Ошибка получения username из токена: {e}")
+        
+        playlists = yandex_client.get_playlists(username)
         return playlists
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

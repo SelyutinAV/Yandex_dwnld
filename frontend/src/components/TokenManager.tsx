@@ -8,6 +8,7 @@ interface SavedToken {
     id: number
     name: string
     token_type: 'oauth' | 'session_id'
+    username?: string
     is_active: boolean
     created_at: string
     last_used: string | null
@@ -24,6 +25,7 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
     const [showAddForm, setShowAddForm] = useState(false)
     const [newTokenName, setNewTokenName] = useState('')
     const [newToken, setNewToken] = useState('')
+    const [newTokenUsername, setNewTokenUsername] = useState('')
     const [isSaving, setIsSaving] = useState(false)
     const [editingTokenId, setEditingTokenId] = useState<number | null>(null)
     const [editingTokenName, setEditingTokenName] = useState('')
@@ -61,7 +63,8 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
                 },
                 body: JSON.stringify({
                     name: newTokenName,
-                    token: newToken
+                    token: newToken,
+                    username: newTokenUsername || undefined
                 })
             })
 
@@ -70,6 +73,7 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
                 setShowAddForm(false)
                 setNewTokenName('')
                 setNewToken('')
+                setNewTokenUsername('')
                 onTokenChange(newToken)
             } else {
                 const error = await response.json()
@@ -246,6 +250,12 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
                             onChange={setNewTokenName}
                             placeholder="Например: Мой аккаунт"
                         />
+                        <Input
+                            label="Имя пользователя Яндекс.Музыки"
+                            value={newTokenUsername}
+                            onChange={setNewTokenUsername}
+                            placeholder="Например: alselyutin"
+                        />
                         <div>
                             <label className="block text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
                                 Токен
@@ -265,6 +275,7 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
                                     setShowAddForm(false)
                                     setNewTokenName('')
                                     setNewToken('')
+                                    setNewTokenUsername('')
                                 }}
                                 icon={X}
                                 className="bg-gray-100 hover:bg-gray-200 text-gray-700 shadow-md"
@@ -371,6 +382,16 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
                                             {token.token_preview}
                                         </code>
                                     </div>
+
+                                    {/* Username */}
+                                    {token.username && (
+                                        <div className="mb-3">
+                                            <span className="text-sm text-gray-600 dark:text-gray-400">Пользователь: </span>
+                                            <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                                                {token.username}
+                                            </span>
+                                        </div>
+                                    )}
 
                                     {/* Даты */}
                                     <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400">

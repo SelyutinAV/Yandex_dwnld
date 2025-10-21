@@ -6,7 +6,7 @@ import { Card } from './ui/Card'
 interface Playlist {
   id: string
   title: string
-  trackCount: number
+  track_count: number
   cover?: string
   isSynced: boolean
   lastSync?: string
@@ -46,14 +46,14 @@ function PlaylistManager() {
           {
             id: '1',
             title: 'Любимые треки (демо)',
-            trackCount: 156,
+            track_count: 156,
             isSynced: true,
             lastSync: '2025-10-20T10:30:00'
           },
           {
             id: '2',
             title: 'Audiophile Collection (демо)',
-            trackCount: 89,
+            track_count: 89,
             isSynced: false
           }
         ])
@@ -150,8 +150,8 @@ function PlaylistManager() {
             <Card
               key={playlist.id}
               className={`cursor-pointer transition-all duration-200 hover:shadow-soft-lg hover:-translate-y-1 ${selectedPlaylists.has(playlist.id)
-                  ? 'ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                  : 'hover:ring-2 hover:ring-primary-200 dark:hover:ring-primary-800'
+                ? 'ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                : 'hover:ring-2 hover:ring-primary-200 dark:hover:ring-primary-800'
                 }`}
               onClick={() => togglePlaylistSelection(playlist.id)}
             >
@@ -178,7 +178,7 @@ function PlaylistManager() {
                   {playlist.title}
                 </h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {playlist.trackCount} треков
+                  {playlist.track_count} треков
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-500">
                   Последняя синхронизация: {formatDate(playlist.lastSync)}

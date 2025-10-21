@@ -79,6 +79,7 @@ class SavedToken(Base):
     name = Column(String, nullable=False)  # Имя токена (например, "Мой аккаунт")
     token = Column(String, nullable=False)  # Сам токен
     token_type = Column(String, nullable=False)  # oauth или session_id
+    username = Column(String)  # Имя пользователя Яндекс.Музыки (например, "alselyutin")
     is_active = Column(Boolean, default=False)  # Активный токен
     created_at = Column(DateTime, default=datetime.utcnow)
     last_used = Column(DateTime)
@@ -202,7 +203,7 @@ def get_all_settings(session) -> dict:
 
 
 # Функции для работы с токенами
-def save_token(session, name: str, token: str, token_type: str, is_active: bool = False):
+def save_token(session, name: str, token: str, token_type: str, username: str = None, is_active: bool = False):
     """Сохранить токен"""
     # Деактивируем все остальные токены если этот активный
     if is_active:
@@ -214,13 +215,16 @@ def save_token(session, name: str, token: str, token_type: str, is_active: bool 
     if existing:
         existing.token = token
         existing.token_type = token_type
+        existing.username = username
         existing.is_active = is_active
         existing.last_used = datetime.utcnow()
+        saved_token = existing
     else:
         saved_token = SavedToken(
             name=name,
             token=token,
             token_type=token_type,
+            username=username,
             is_active=is_active,
             last_used=datetime.utcnow()
         )
