@@ -1,5 +1,6 @@
-import { FileAudio, FolderOpen, HardDrive, Music, RefreshCw } from 'lucide-react'
+import { ExternalLink, FileAudio, FolderOpen, HardDrive, Music, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useAppContext } from '../contexts/AppContext'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 
@@ -19,6 +20,7 @@ interface AudioFile {
   file_size?: number
   format?: string
   quality?: string
+  has_cover?: boolean
   download_date: string
 }
 
@@ -32,12 +34,20 @@ function FileAnalyzer() {
     byQuality: {}
   })
   const [recentFiles, setRecentFiles] = useState<AudioFile[]>([])
+  const { state, triggerRefresh } = useAppContext()
 
   // Загружаем данные при монтировании компонента
   useEffect(() => {
     loadData()
     loadSettings()
   }, [])
+
+  // Обновляем данные при изменении контекста
+  useEffect(() => {
+    if (state.refreshTrigger > 0) {
+      loadData()
+    }
+  }, [state.refreshTrigger])
 
   const loadSettings = async () => {
     try {
@@ -78,6 +88,53 @@ function FileAnalyzer() {
     await loadData()
   }
 
+  const openInFileManager = () => {
+    // Открываем папку в файловом менеджере через системную команду
+    window.open(`file://${downloadPath}`, '_blank')
+  }
+
+  const clearStats = async () => {
+    if (window.confirm('Вы уверены, что хотите очистить статистику файлов?')) {
+      try {
+        const response = await fetch('http://localhost:8000/api/files/clear-stats', {
+          method: 'DELETE'
+        })
+
+        if (response.ok) {
+          await loadData() // Перезагружаем данные
+        } else {
+          console.error('Ошибка очистки статистики')
+        }
+      } catch (error) {
+        console.error('Ошибка очистки статистики:', error)
+      }
+    }
+  }
+
+  const scanFilesystem = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('http://localhost:8000/api/files/scan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ path: downloadPath })
+      })
+
+      if (response.ok) {
+        await loadData() // Перезагружаем данные после сканирования
+        triggerRefresh() // Уведомляем другие компоненты
+      } else {
+        console.error('Ошибка сканирования файловой системы')
+      }
+    } catch (error) {
+      console.error('Ошибка сканирования файловой системы:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const formatSize = (mb: number) => {
     if (mb >= 1024) {
       return `${(mb / 1024).toFixed(2)} ГБ`
@@ -85,9 +142,25 @@ function FileAnalyzer() {
     return `${mb.toFixed(2)} МБ`
   }
 
-  const selectFolder = () => {
-    // TODO: Открыть диалог выбора папки
-    console.log('Выбор папки')
+  const selectFolder = async () => {
+    try {
+      // Открываем диалог выбора папки через API
+      const response = await fetch('http://localhost:8000/api/folders/list', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ path: "/home/urch" })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log('Доступные папки:', data.folders)
+        // TODO: Показать диалог выбора папки
+      }
+    } catch (error) {
+      console.error('Ошибка получения списка папок:', error)
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -108,16 +181,44 @@ function FileAnalyzer() {
   return (
     <div className="w-full space-y-8">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Анализ файлов</h2>
-        <Button
-          variant="secondary"
-          onClick={analyzeFiles}
-          disabled={loading}
-          icon={RefreshCw}
-          loading={loading}
-        >
-          Обновить анализ
-        </Button>
+        <div className="flex items-center gap-4">
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Анализ файлов</h2>
+          {state.refreshTrigger > 0 && (
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-500"></div>
+              <span>Обновлено</span>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={analyzeFiles}
+            disabled={loading}
+            icon={RefreshCw}
+            loading={loading}
+          >
+            Обновить анализ
+          </Button>
+          <Button
+            variant="primary"
+            onClick={scanFilesystem}
+            disabled={loading}
+            icon={RefreshCw}
+            loading={loading}
+          >
+            Сканировать файлы
+          </Button>
+          {stats.totalFiles > 0 && (
+            <Button
+              variant="error"
+              onClick={clearStats}
+              disabled={loading}
+            >
+              Очистить статистику
+            </Button>
+          )}
+        </div>
       </div>
 
       <Card className="p-6">
@@ -139,6 +240,13 @@ function FileAnalyzer() {
             icon={FolderOpen}
           >
             Выбрать
+          </Button>
+          <Button
+            variant="primary"
+            onClick={openInFileManager}
+            icon={ExternalLink}
+          >
+            Открыть папку
           </Button>
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
@@ -243,7 +351,22 @@ function FileAnalyzer() {
           <div className="space-y-4">
             {recentFiles.map((file) => (
               <div key={file.track_id} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <FileAudio size={24} className="text-primary-500 flex-shrink-0" />
+                <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                  <img
+                    src={`http://localhost:8000/api/files/cover/${file.track_id}`}
+                    alt={`${file.artist} - ${file.title}`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none'
+                      e.currentTarget.nextElementSibling.style.display = 'flex'
+                    }}
+                  />
+                  <FileAudio
+                    size={24}
+                    className="text-primary-500"
+                    style={{ display: 'none' }}
+                  />
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{file.title}</div>
                   <div className="text-sm text-gray-600 dark:text-gray-400 truncate">{file.artist}</div>

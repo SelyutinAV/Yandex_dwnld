@@ -8,16 +8,23 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 import asyncio
+import logging
 from pathlib import Path
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Импорт наших модулей
 from yandex_client import YandexMusicClient
 from downloader import DownloadManager
 from db_manager import db_manager
+from logger_config import setup_logging, get_logger
 
 # Загружаем переменные окружения
 load_dotenv()
+
+# Настраиваем логирование
+setup_logging()
+logger = get_logger(__name__)
 
 # Глобальные переменные
 yandex_client: Optional[YandexMusicClient] = None
@@ -36,8 +43,12 @@ async def init_app():
     """Инициализация приложения"""
     global yandex_client, download_manager
     
+    logger.info("Инициализация приложения...")
+    
     # Инициализация клиента Яндекс.Музыка
     update_yandex_client()
+    
+    logger.info("✅ Приложение инициализировано")
 
 # Создание FastAPI приложения
 app = FastAPI(
@@ -93,6 +104,9 @@ class SaveTokenRequest(BaseModel):
 
 class ActivateTokenRequest(BaseModel):
     token_id: int
+
+class ProgressUpdateRequest(BaseModel):
+    progress: int
 
 # Функция для обновления клиента
 def update_yandex_client(token: Optional[str] = None):
@@ -381,6 +395,128 @@ async def get_playlist_tracks(playlist_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/account/subscription")
+async def get_subscription_info():
+    """Получить информацию о подписке"""
+    try:
+        if not yandex_client:
+            raise HTTPException(status_code=400, detail="Клиент не инициализирован")
+        
+        # Получаем информацию об аккаунте
+        from yandex_music import Client
+        client = Client().init()
+        client._session_id = yandex_client.token
+        
+        account = client.account_status()
+        
+        return {
+            'has_subscription': account.subscription is not None,
+            'advertisement': account.advertisement,
+            'account_info': {
+                'login': account.account.login,
+                'uid': account.account.uid,
+                'full_name': account.account.full_name
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/tracks/{track_id}/formats")
+async def get_track_formats(track_id: str):
+    """Получить доступные форматы трека"""
+    try:
+        if not yandex_client:
+            raise HTTPException(status_code=400, detail="Клиент не инициализирован")
+        
+        # Получаем информацию о треке
+        tracks_result = yandex_client.client.tracks([track_id])
+        if not tracks_result or len(tracks_result) == 0:
+            raise HTTPException(status_code=404, detail="Трек не найден")
+        
+        track = tracks_result[0]
+        print(f"🔍 Получение форматов для трека: {track.title}")
+        
+        download_info = track.get_download_info(get_direct_links=True)
+        
+        formats = []
+        has_flac = False
+        
+        for info in download_info:
+            format_data = {
+                'codec': info.codec,
+                'bitrate': info.bitrate_in_kbps,
+                'gain': getattr(info, 'gain', None),
+                'preview': getattr(info, 'preview', False),
+                'direct_link_available': True
+            }
+            
+            # Пробуем получить прямую ссылку
+            try:
+                direct_link = info.get_direct_link()
+                format_data['direct_link'] = direct_link[:100] + '...'
+                format_data['has_signature'] = 'ysign1=' in direct_link
+                
+                # Анализируем URL
+                if 'flac' in direct_link.lower():
+                    has_flac = True
+                    format_data['is_lossless'] = True
+                
+            except Exception as e:
+                format_data['direct_link_error'] = str(e)
+                format_data['direct_link_available'] = False
+            
+            formats.append(format_data)
+        
+        # Проверяем подписку
+        subscription_status = None
+        try:
+            account = yandex_client.client.account_status()
+            if account:
+                subscription_status = {
+                    'has_plus': account.plus is not None,
+                    'login': account.account.login if account.account else None
+                }
+        except Exception as e:
+            print(f"⚠️  Не удалось проверить подписку: {e}")
+        
+        return {
+            'track_id': track_id,
+            'title': track.title,
+            'artist': track.artists[0].name if track.artists else 'Unknown',
+            'album': track.albums[0].title if track.albums else None,
+            'duration_ms': track.duration_ms,
+            'available_formats': formats,
+            'has_flac': has_flac,
+            'formats_count': len(formats),
+            'subscription': subscription_status,
+            'recommendation': 'lossless' if has_flac else 'hq'
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/tracks/{track_id}/file-info")
+async def get_track_file_info(track_id: str, quality: str = 'lossless'):
+    """Получить информацию о файле через новый API endpoint"""
+    try:
+        if not yandex_client:
+            raise HTTPException(status_code=400, detail="Клиент не инициализирован")
+        
+        file_info = yandex_client.get_file_info(track_id, quality)
+        
+        if file_info:
+            return {
+                'track_id': track_id,
+                'quality': quality,
+                'file_info': file_info
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Информация о файле не найдена")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/download/playlist")
 async def download_playlist(request: DownloadRequest):
     """Загрузить плейлист"""
@@ -388,7 +524,7 @@ async def download_playlist(request: DownloadRequest):
         if not download_manager:
             raise HTTPException(status_code=400, detail="Менеджер загрузок не инициализирован")
         
-        result = download_manager.download_playlist(request.playlist_id, request.quality)
+        result = await download_manager.download_playlist(request.playlist_id, request.quality)
         return {"status": "success", "message": f"Загрузка плейлиста {request.playlist_id} начата"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -433,6 +569,47 @@ async def get_stats():
     except Exception as e:
         return {"totalTracks": 0, "totalSizeMB": 0, "totalSizeGB": 0}
 
+@app.get("/api/downloads/stats")
+async def get_download_stats():
+    """Получить детальную статистику загрузок"""
+    try:
+        # Получаем статистику из очереди загрузок
+        queue_stats = db_manager.get_download_queue_stats()
+        
+        # Получаем статистику загруженных файлов
+        file_stats = db_manager.get_file_statistics()
+        
+        return {
+            "queue": queue_stats,
+            "files": file_stats,
+            "summary": {
+                "totalInQueue": queue_stats["total"],
+                "completedInQueue": queue_stats["completed"],
+                "downloadingInQueue": queue_stats["downloading"],
+                "pendingInQueue": queue_stats["pending"],
+                "errorsInQueue": queue_stats["errors"],
+                "totalDownloaded": file_stats["totalFiles"],
+                "totalSizeMB": file_stats["totalSize"],
+                "totalSizeGB": round(file_stats["totalSize"] / 1024, 2) if file_stats["totalSize"] > 0 else 0
+            }
+        }
+    except Exception as e:
+        logger.error(f"Ошибка получения статистики загрузок: {e}")
+        return {
+            "queue": {"total": 0, "completed": 0, "downloading": 0, "pending": 0, "errors": 0},
+            "files": {"totalFiles": 0, "totalSize": 0},
+            "summary": {
+                "totalInQueue": 0,
+                "completedInQueue": 0,
+                "downloadingInQueue": 0,
+                "pendingInQueue": 0,
+                "errorsInQueue": 0,
+                "totalDownloaded": 0,
+                "totalSizeMB": 0,
+                "totalSizeGB": 0
+            }
+        }
+
 @app.post("/api/settings")
 async def save_settings(settings: Settings):
     """Сохранить настройки"""
@@ -474,7 +651,7 @@ async def get_settings():
         return {
             "token": current_token,
             "downloadPath": db_manager.get_setting("download_path", os.getenv("DOWNLOAD_PATH", "/home/urch/Music/Yandex")),
-            "quality": db_manager.get_setting("quality", os.getenv("DEFAULT_QUALITY", "ultra")),
+            "quality": db_manager.get_setting("quality", os.getenv("DEFAULT_QUALITY", "lossless")),
             "autoSync": db_manager.get_setting("auto_sync", "false").lower() == "true",
             "syncInterval": int(db_manager.get_setting("sync_interval", "24")),
             "fileTemplate": db_manager.get_setting("file_template", "{artist} - {title}"),
@@ -588,6 +765,197 @@ async def get_files_list(playlist_id: str = None, limit: int = 100, offset: int 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/api/files/clear-stats")
+async def clear_file_stats():
+    """Очистить статистику файлов"""
+    try:
+        # Очищаем таблицу загруженных треков
+        with db_manager.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM downloaded_tracks")
+            conn.commit()
+        
+        return {"status": "success", "message": "Статистика файлов очищена"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ScanRequest(BaseModel):
+    path: str
+
+@app.post("/api/files/scan")
+async def scan_filesystem(request: ScanRequest):
+    """Сканировать файловую систему для поиска аудиофайлов"""
+    try:
+        if not download_manager:
+            raise HTTPException(status_code=400, detail="Менеджер загрузок не инициализирован")
+        
+        # Используем метод analyze_directory из DownloadManager
+        stats = download_manager.analyze_directory(request.path)
+        
+        # Сохраняем найденные файлы в базу данных
+        with db_manager.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Очищаем старые записи
+            cursor.execute("DELETE FROM downloaded_tracks")
+            
+            # Сканируем все файлы заново для полной статистики
+            import os
+            from pathlib import Path
+            
+            audio_extensions = {'.flac', '.mp3', '.aac', '.m4a', '.ogg'}
+            files_scanned = 0
+            
+            # Сканируем директорию рекурсивно
+            for file_path in Path(request.path).rglob('*'):
+                if file_path.is_file() and file_path.suffix.lower() in audio_extensions:
+                    try:
+                        file_name = file_path.stem
+                        file_size = file_path.stat().st_size / (1024 * 1024)  # в МБ
+                        
+                        # Пытаемся извлечь информацию о треке из имени файла
+                        # Простая логика: предполагаем формат "Artist - Title"
+                        parts = file_name.split(' - ', 1)
+                        artist = parts[0] if len(parts) > 0 else 'Unknown Artist'
+                        title = parts[1] if len(parts) > 1 else file_name
+                        
+                        # Определяем формат и качество
+                        format_ext = file_path.suffix.lower()[1:].upper()
+                        
+                        # Пытаемся получить реальные метаданные файла
+                        quality = f"{format_ext} Audio"
+                        cover_data = None
+                        try:
+                            if format_ext.lower() == 'mp3':
+                                from mutagen.mp3 import MP3
+                                audio = MP3(str(file_path))
+                                if audio.info:
+                                    bitrate = f"{audio.info.bitrate // 1000}kbps"
+                                    sample_rate = f"{audio.info.sample_rate / 1000}kHz"
+                                    quality = f"{bitrate}/{sample_rate}"
+                                
+                                # Извлекаем обложку
+                                if audio.tags:
+                                    for key in audio.tags.keys():
+                                        if key.startswith('APIC:'):
+                                            cover_data = audio.tags[key].data
+                                            break
+                            elif format_ext.lower() == 'flac':
+                                from mutagen.flac import FLAC
+                                audio = FLAC(str(file_path))
+                                if audio.info:
+                                    bit_depth = f"{audio.info.bits_per_sample}-bit"
+                                    sample_rate = f"{audio.info.sample_rate / 1000}kHz"
+                                    quality = f"{bit_depth}/{sample_rate}"
+                                
+                                # Извлекаем обложку из FLAC
+                                if audio.pictures:
+                                    cover_data = audio.pictures[0].data
+                        except Exception as e:
+                            # Если не удалось получить метаданные, используем базовое качество
+                            pass
+                        
+                        cursor.execute("""
+                            INSERT INTO downloaded_tracks 
+                            (track_id, title, artist, album, file_path, file_size, format, quality, cover_data, download_date)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            f"scanned_{hash(str(file_path))}",  # Генерируем ID на основе пути
+                            title,
+                            artist,
+                            'Scanned Files',
+                            str(file_path),
+                            round(file_size, 2),
+                            format_ext,
+                            quality,
+                            cover_data,  # Сохраняем данные обложки
+                            datetime.now().isoformat()
+                        ))
+                        
+                        files_scanned += 1
+                        
+                    except Exception as e:
+                        print(f"Ошибка обработки файла {file_path}: {e}")
+            
+            conn.commit()
+            print(f"Сканировано файлов: {files_scanned}")
+        
+        return {
+            "status": "success", 
+            "message": f"Найдено файлов: {files_scanned}",
+            "stats": stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/files/cover/{track_id}")
+async def get_track_cover(track_id: str):
+    """Получить обложку трека"""
+    try:
+        with db_manager.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT cover_data FROM downloaded_tracks WHERE track_id = ?", (track_id,))
+            row = cursor.fetchone()
+            
+            if row and row[0]:
+                from fastapi.responses import Response
+                return Response(
+                    content=row[0],
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=3600"}
+                )
+            else:
+                # Возвращаем placeholder изображение если обложка не найдена
+                from fastapi.responses import Response
+                import base64
+                
+                # Простое SVG изображение как placeholder
+                svg_placeholder = f'''<svg width="48" height="48" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="48" height="48" fill="#f3f4f6"/>
+                    <text x="24" y="24" text-anchor="middle" dy=".3em" font-family="Arial" font-size="12" fill="#6b7280">🎵</text>
+                </svg>'''
+                
+                return Response(
+                    content=svg_placeholder,
+                    media_type="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=3600"}
+                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/downloads/{track_id}/progress")
+async def update_download_progress(track_id: str, request: ProgressUpdateRequest):
+    """Обновить прогресс загрузки трека"""
+    try:
+        progress = request.progress
+        if not (0 <= progress <= 100):
+            raise HTTPException(status_code=400, detail="Прогресс должен быть от 0 до 100")
+        
+        success = db_manager.update_download_progress(track_id, progress)
+        if not success:
+            raise HTTPException(status_code=404, detail="Трек не найден в очереди")
+        
+        return {"status": "success", "message": "Прогресс обновлен"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/downloads/clear-completed")
+async def clear_completed_downloads():
+    """Очистить завершенные загрузки из очереди"""
+    try:
+        deleted_count = db_manager.clear_completed_downloads()
+        return {
+            "status": "success", 
+            "message": f"Удалено завершенных загрузок: {deleted_count}",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/downloads/queue")
 async def get_download_queue():
     """Получить очередь загрузок из базы данных"""
@@ -610,6 +978,117 @@ async def retry_download(track_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/logs")
+async def get_logs(log_type: str = "all", lines: int = 100):
+    """Получить логи"""
+    try:
+        logs_dir = Path(__file__).parent.parent / 'logs'
+        
+        if log_type == "downloads":
+            log_file = logs_dir / 'downloads.log'
+        elif log_type == "errors":
+            log_file = logs_dir / 'errors.log'
+        elif log_type == "main":
+            log_file = logs_dir / 'yandex_music.log'
+        else:  # all
+            # Объединяем все логи
+            all_logs = []
+            for log_file in [logs_dir / 'yandex_music.log', logs_dir / 'downloads.log', logs_dir / 'errors.log']:
+                if log_file.exists():
+                    with open(log_file, 'r', encoding='utf-8') as f:
+                        all_logs.extend(f.readlines())
+            
+            # Сортируем по времени (первые символы - дата)
+            all_logs.sort(key=lambda x: x[:19] if len(x) > 19 else x)
+            
+            return {
+                "logs": all_logs[-lines:] if lines > 0 else all_logs,
+                "total_lines": len(all_logs),
+                "log_type": "all"
+            }
+        
+        if not log_file.exists():
+            return {"logs": [], "total_lines": 0, "log_type": log_type}
+        
+        with open(log_file, 'r', encoding='utf-8') as f:
+            all_lines = f.readlines()
+        
+        # Берем последние N строк
+        recent_lines = all_lines[-lines:] if lines > 0 else all_lines
+        
+        return {
+            "logs": recent_lines,
+            "total_lines": len(all_lines),
+            "log_type": log_type
+        }
+        
+    except Exception as e:
+        logger.error(f"Ошибка чтения логов: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/logs")
+async def clear_logs():
+    """Очистить все логи"""
+    try:
+        logs_dir = Path(__file__).parent.parent / 'logs'
+        
+        cleared_files = []
+        for log_file in logs_dir.glob('*.log*'):
+            if log_file.is_file():
+                log_file.unlink()
+                cleared_files.append(log_file.name)
+        
+        logger.info(f"Очищены логи: {cleared_files}")
+        
+        return {
+            "status": "success",
+            "message": f"Очищено файлов: {len(cleared_files)}",
+            "files": cleared_files
+        }
+        
+    except Exception as e:
+        logger.error(f"Ошибка очистки логов: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/logs/stats")
+async def get_log_stats():
+    """Получить статистику логов"""
+    try:
+        logs_dir = Path(__file__).parent.parent / 'logs'
+        
+        stats = {}
+        total_size = 0
+        
+        for log_file in logs_dir.glob('*.log*'):
+            if log_file.is_file():
+                size = log_file.stat().st_size
+                total_size += size
+                
+                # Подсчитываем строки
+                try:
+                    with open(log_file, 'r', encoding='utf-8') as f:
+                        lines_count = sum(1 for _ in f)
+                except:
+                    lines_count = 0
+                
+                stats[log_file.name] = {
+                    "size_bytes": size,
+                    "size_mb": round(size / (1024 * 1024), 2),
+                    "lines": lines_count,
+                    "modified": log_file.stat().st_mtime
+                }
+        
+        return {
+            "total_size_bytes": total_size,
+            "total_size_mb": round(total_size / (1024 * 1024), 2),
+            "files": stats,
+            "files_count": len(stats)
+        }
+        
+    except Exception as e:
+        logger.error(f"Ошибка получения статистики логов: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/api/downloads/{track_id}")
 async def cancel_download(track_id: str):
     """Отменить загрузку трека"""
@@ -620,6 +1099,71 @@ async def cancel_download(track_id: str):
         return {"status": "success", "message": "Загрузка отменена"}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class PauseRequest(BaseModel):
+    paused: bool
+
+@app.post("/api/downloads/pause")
+async def pause_downloads(request: PauseRequest):
+    """Приостановить/возобновить все загрузки"""
+    try:
+        # Сохраняем состояние паузы в настройках
+        db_manager.save_setting("downloads_paused", str(request.paused))
+        
+        if request.paused:
+            # Если пауза, останавливаем все активные загрузки
+            if download_manager:
+                # TODO: Реализовать остановку активных загрузок в DownloadManager
+                pass
+            return {"status": "success", "message": "Загрузки приостановлены"}
+        else:
+            # Если возобновление, запускаем обработку очереди
+            if download_manager:
+                # TODO: Реализовать возобновление загрузок в DownloadManager
+                pass
+            return {"status": "success", "message": "Загрузки возобновлены"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class AddToQueueRequest(BaseModel):
+    track_id: str
+    title: str
+    artist: str
+    album: str = None
+    quality: str = "lossless"
+
+@app.post("/api/downloads/add-to-queue")
+async def add_to_queue(request: AddToQueueRequest):
+    """Добавить трек в очередь загрузок"""
+    try:
+        with db_manager.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Проверяем, не добавлен ли уже этот трек
+            cursor.execute("SELECT id FROM download_queue WHERE track_id = ?", (request.track_id,))
+            if cursor.fetchone():
+                return {"status": "warning", "message": "Трек уже в очереди"}
+            
+            # Добавляем трек в очередь
+            cursor.execute("""
+                INSERT INTO download_queue 
+                (track_id, title, artist, album, status, progress, quality, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?)
+            """, (
+                request.track_id,
+                request.title,
+                request.artist,
+                request.album,
+                request.quality,
+                datetime.now().isoformat(),
+                datetime.now().isoformat()
+            ))
+            
+            conn.commit()
+            
+        return {"status": "success", "message": "Трек добавлен в очередь"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

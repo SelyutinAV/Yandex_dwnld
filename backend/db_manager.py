@@ -70,6 +70,7 @@ class DatabaseManager:
                     file_size REAL,
                     format TEXT,
                     quality TEXT,
+                    cover_data BLOB,
                     download_date TEXT DEFAULT CURRENT_TIMESTAMP,
                     last_checked TEXT DEFAULT CURRENT_TIMESTAMP,
                     is_available INTEGER DEFAULT 1
@@ -92,6 +93,13 @@ class DatabaseManager:
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
+            # Миграция: добавляем поле cover_data если его нет
+            try:
+                cursor.execute("ALTER TABLE downloaded_tracks ADD COLUMN cover_data BLOB")
+            except sqlite3.OperationalError:
+                # Поле уже существует
+                pass
             
             # Индексы для быстрого поиска
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tokens_active ON saved_tokens(is_active)')
@@ -336,7 +344,8 @@ class DatabaseManager:
                 return []
             
             cursor.execute("""
-                SELECT track_id, title, artist, album, file_path, file_size, format, quality, download_date
+                SELECT track_id, title, artist, album, file_path, file_size, format, quality, 
+                       CASE WHEN cover_data IS NOT NULL THEN 1 ELSE 0 END as has_cover, download_date
                 FROM downloaded_tracks
                 ORDER BY download_date DESC
                 LIMIT ?
@@ -353,7 +362,8 @@ class DatabaseManager:
                     "file_size": row[5],
                     "format": row[6],
                     "quality": row[7],
-                    "download_date": row[8]
+                    "has_cover": bool(row[8]),
+                    "download_date": row[9]
                 })
             
             return tracks
@@ -478,6 +488,104 @@ class DatabaseManager:
             cursor.execute("DELETE FROM download_queue WHERE track_id = ?", (track_id,))
             conn.commit()
             return cursor.rowcount > 0
+    
+    def update_download_progress(self, track_id: str, progress: int) -> bool:
+        """Обновить прогресс загрузки трека"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Проверяем, существует ли таблица download_queue
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='download_queue'
+            """)
+            if not cursor.fetchone():
+                return False
+            
+            # Обновляем прогресс
+            cursor.execute("""
+                UPDATE download_queue 
+                SET progress = ?, updated_at = ?, status = CASE 
+                    WHEN ? = 100 THEN 'completed'
+                    WHEN ? > 0 THEN 'downloading'
+                    ELSE status
+                END
+                WHERE track_id = ?
+            """, (progress, datetime.now().isoformat(), progress, progress, track_id))
+            
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_download_queue_stats(self) -> Dict:
+        """Получить статистику очереди загрузок"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Проверяем, существует ли таблица download_queue
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='download_queue'
+            """)
+            if not cursor.fetchone():
+                return {
+                    "total": 0,
+                    "completed": 0,
+                    "downloading": 0,
+                    "pending": 0,
+                    "error": 0,
+                    "errors": 0
+                }
+            
+            # Получаем общее количество
+            cursor.execute("SELECT COUNT(*) FROM download_queue")
+            total = cursor.fetchone()[0]
+            
+            # Получаем статистику по статусам
+            cursor.execute("""
+                SELECT status, COUNT(*) as count
+                FROM download_queue
+                GROUP BY status
+            """)
+            
+            stats = {
+                "total": total,
+                "completed": 0,
+                "downloading": 0,
+                "pending": 0,
+                "error": 0,
+                "errors": 0
+            }
+            
+            for row in cursor.fetchall():
+                status = row[0]
+                count = row[1]
+                if status in stats:
+                    stats[status] = count
+                # Для совместимости добавляем errors как alias для error
+                if status == 'error':
+                    stats['errors'] = count
+            
+            return stats
+    
+    def clear_completed_downloads(self) -> int:
+        """Очистить завершенные загрузки из очереди"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Проверяем, существует ли таблица download_queue
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='download_queue'
+            """)
+            if not cursor.fetchone():
+                return 0
+            
+            # Удаляем завершенные загрузки
+            cursor.execute("DELETE FROM download_queue WHERE status = 'completed'")
+            deleted_count = cursor.rowcount
+            conn.commit()
+            
+            return deleted_count
 
 
 # Глобальный экземпляр менеджера БД

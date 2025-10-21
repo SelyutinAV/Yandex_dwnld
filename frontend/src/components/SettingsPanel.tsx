@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   Check,
   ChevronDown,
   ChevronRight,
@@ -10,10 +11,14 @@ import {
   FolderOpen,
   FolderPlus,
   HelpCircle,
+  Info,
   Key,
   Palette,
+  RefreshCw,
   Save,
+  ScrollText,
   Settings as SettingsIcon,
+  Trash2,
   Wifi,
   WifiOff
 } from 'lucide-react'
@@ -105,12 +110,18 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
 function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   // Состояние для настроек
   const [downloadPath, setDownloadPath] = useState('/home/urch/Music/Yandex')
-  const [quality, setQuality] = useState('ultra')
+  const [quality, setQuality] = useState('lossless')
   const [autoSync, setAutoSync] = useState(false)
   const [syncInterval, setSyncInterval] = useState(24)
   const [fileTemplate, setFileTemplate] = useState('{artist} - {title}')
   const [folderStructure, setFolderStructure] = useState('{artist}/{album}')
 
+  // Состояние для логов
+  const [logs, setLogs] = useState<string[]>([])
+  const [logType, setLogType] = useState<string>('downloads')
+  const [logLines, setLogLines] = useState<number>(100)
+  const [logStats, setLogStats] = useState<any>(null)
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false)
   // Состояние для соединения
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -119,7 +130,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   // Состояние для UI
   const [isTokenHelperOpen, setIsTokenHelperOpen] = useState(false)
   const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false)
-  const [activeSection, setActiveSection] = useState<'tokens' | 'download' | 'files' | 'sync'>('tokens')
+  const [activeSection, setActiveSection] = useState<'tokens' | 'download' | 'files' | 'sync' | 'logs'>('tokens')
 
   // Состояние для файлового браузера
   const [selectedPath, setSelectedPath] = useState('')
@@ -145,7 +156,15 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   // Загрузка настроек при монтировании компонента
   useEffect(() => {
     loadSettings()
+    loadLogStats()
   }, [])
+
+  // Загрузка логов при изменении типа или количества строк
+  useEffect(() => {
+    if (logType) {
+      loadLogs()
+    }
+  }, [logType, logLines])
 
   const loadSettings = async () => {
     setIsLoading(true)
@@ -154,7 +173,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
       if (response.ok) {
         const settings = await response.json()
         setDownloadPath(settings.downloadPath || '/home/urch/Music/Yandex')
-        setQuality(settings.quality || 'ultra')
+        setQuality(settings.quality || 'lossless')
         setAutoSync(settings.autoSync || false)
         setSyncInterval(settings.syncInterval || 24)
 
@@ -175,6 +194,55 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
       console.error('Ошибка загрузки настроек:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  // Функции для работы с логами
+  const loadLogs = async () => {
+    setIsLoadingLogs(true)
+    try {
+      const response = await fetch(`http://localhost:8000/api/logs?log_type=${logType}&lines=${logLines}`)
+      if (response.ok) {
+        const data = await response.json()
+        setLogs(data.logs || [])
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки логов:', error)
+    } finally {
+      setIsLoadingLogs(false)
+    }
+  }
+
+  const loadLogStats = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/logs/stats')
+      if (response.ok) {
+        const stats = await response.json()
+        setLogStats(stats)
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки статистики логов:', error)
+    }
+  }
+
+  const clearLogs = async () => {
+    if (!confirm('Вы уверены, что хотите очистить все логи?')) {
+      return
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/logs', {
+        method: 'DELETE'
+      })
+      if (response.ok) {
+        const result = await response.json()
+        alert(`Логи очищены! Удалено файлов: ${result.files.length}`)
+        setLogs([])
+        loadLogStats()
+      }
+    } catch (error) {
+      console.error('Ошибка очистки логов:', error)
+      alert('Ошибка при очистке логов')
     }
   }
 
@@ -389,7 +457,8 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
     { id: 'tokens', label: 'Токены', icon: Key, description: 'Управление токенами' },
     { id: 'download', label: 'Загрузка', icon: Download, description: 'Настройки загрузки' },
     { id: 'files', label: 'Файлы', icon: FileText, description: 'Структура файлов' },
-    { id: 'sync', label: 'Синхронизация', icon: Clock, description: 'Автосинхронизация' }
+    { id: 'sync', label: 'Синхронизация', icon: Clock, description: 'Автосинхронизация' },
+    { id: 'logs', label: 'Логи', icon: ScrollText, description: 'Просмотр и очистка логов' }
   ] as const
 
   const currentSection = navSections.find(section => section.id === activeSection)
@@ -533,14 +602,15 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                   onChange={(e) => setQuality(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
-                  <option value="ultra">Ультра (FLAC 32-bit/192kHz)</option>
-                  <option value="lossless">Lossless (FLAC 24-bit/96kHz)</option>
-                  <option value="high">Высокое (FLAC 16-bit/44.1kHz)</option>
-                  <option value="medium">Среднее (320 kbps MP3)</option>
-                  <option value="low">Стандартное (256 kbps AAC)</option>
+                  <option value="lossless">Lossless (FLAC 16-bit/44.1kHz) - CD качество 🎵</option>
+                  <option value="hq">High Quality (AAC 256kbps / MP3 320kbps)</option>
+                  <option value="nq">Normal Quality (MP3 192kbps)</option>
                 </select>
+                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                  💡 Для FLAC требуется подписка Яндекс.Плюс. Без подписки будет выбран лучший доступный формат.
+                </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  <strong>Рекомендуется:</strong> Ультра для профессионального аудиофильского оборудования
+                  <strong>Рекомендуется:</strong> Lossless для максимального качества звука
                 </p>
               </div>
             </div>
@@ -562,12 +632,27 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                 <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Пример результата:</p>
                   <p className="text-sm text-gray-600 dark:text-gray-400 font-mono">
-                    {fileTemplate.replace('{artist}', 'Radiohead').replace('{title}', 'Creep').replace('{album}', 'Pablo Honey').replace('{year}', '1993').replace('{track}', '01')}.flac
+                    {fileTemplate.replace('{artist}', 'Radiohead').replace('{title}', 'Creep').replace('{album}', 'Pablo Honey').replace('{year}', '1993').replace('{track}', '01').replace('{playlist}', 'Мой плейлист')}.flac
                   </p>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  <strong>Доступные переменные:</strong> {'{artist}'}, {'{title}'}, {'{album}'}, {'{year}'}, {'{track}'}
-                </p>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Доступные переменные:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['{artist}', '{title}', '{album}', '{year}', '{track}', '{playlist}'].map((variable) => (
+                      <button
+                        key={variable}
+                        onClick={() => setFileTemplate(prev => prev + variable)}
+                        className="px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-lg text-sm font-mono hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-colors cursor-pointer"
+                        title={`Добавить ${variable} в шаблон`}
+                      >
+                        {variable}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-500">
+                    Нажмите на переменную, чтобы добавить её в шаблон
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -584,12 +669,27 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                 <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Пример структуры:</p>
                   <p className="text-sm text-gray-600 dark:text-gray-400 font-mono">
-                    {downloadPath}/{folderStructure.replace('{artist}', 'Radiohead').replace('{album}', 'Pablo Honey')}/
+                    {downloadPath}/{folderStructure.replace('{artist}', 'Radiohead').replace('{album}', 'Pablo Honey').replace('{playlist}', 'Мой плейлист')}/
                   </p>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Создавать подпапки по исполнителю и альбому
-                </p>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Доступные переменные:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['{artist}', '{album}', '{year}', '{playlist}'].map((variable) => (
+                      <button
+                        key={variable}
+                        onClick={() => setFolderStructure(prev => prev + variable)}
+                        className="px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-lg text-sm font-mono hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-colors cursor-pointer"
+                        title={`Добавить ${variable} в структуру папок`}
+                      >
+                        {variable}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-500">
+                    Нажмите на переменную, чтобы добавить её в структуру папок
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -658,6 +758,144 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                     </p>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'logs' && (
+            <div className="space-y-6">
+              {/* Статистика логов */}
+              {logStats && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Info size={20} className="text-blue-600 dark:text-blue-400" />
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Статистика логов</h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{logStats.files_count}</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Файлов</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{logStats.total_size_mb} МБ</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Общий размер</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                        {Object.values(logStats.files).reduce((sum: number, file: any) => sum + file.lines, 0)}
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Строк</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Настройки просмотра */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <ScrollText size={20} className="text-primary-500" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Просмотр логов</h4>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Тип логов
+                    </label>
+                    <select
+                      value={logType}
+                      onChange={(e) => setLogType(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      <option value="downloads">Загрузки (downloads.log)</option>
+                      <option value="errors">Ошибки (errors.log)</option>
+                      <option value="main">Основные (yandex_music.log)</option>
+                      <option value="all">Все логи</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Количество строк
+                    </label>
+                    <select
+                      value={logLines}
+                      onChange={(e) => setLogLines(Number(e.target.value))}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      <option value={50}>50 строк</option>
+                      <option value={100}>100 строк</option>
+                      <option value={200}>200 строк</option>
+                      <option value={500}>500 строк</option>
+                      <option value={0}>Все строки</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button
+                    onClick={loadLogs}
+                    disabled={isLoadingLogs}
+                    className="flex items-center gap-2"
+                  >
+                    <RefreshCw size={16} className={isLoadingLogs ? 'animate-spin' : ''} />
+                    {isLoadingLogs ? 'Загрузка...' : 'Обновить'}
+                  </Button>
+
+                  <Button
+                    onClick={clearLogs}
+                    variant="secondary"
+                    className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
+                  >
+                    <Trash2 size={16} />
+                    Очистить все логи
+                  </Button>
+                </div>
+              </div>
+
+              {/* Отображение логов */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Содержимое логов</h4>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    {logs.length} строк
+                  </span>
+                </div>
+
+                <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm overflow-auto max-h-96">
+                  {isLoadingLogs ? (
+                    <div className="flex items-center gap-2">
+                      <RefreshCw size={16} className="animate-spin" />
+                      Загрузка логов...
+                    </div>
+                  ) : logs.length === 0 ? (
+                    <div className="text-gray-500">Логи не найдены</div>
+                  ) : (
+                    logs.map((line, index) => (
+                      <div key={index} className="whitespace-pre-wrap">
+                        {line}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Информация о логах */}
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                <div className="flex items-start gap-3">
+                  <AlertCircle size={20} className="text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                  <div>
+                    <h5 className="font-medium text-yellow-800 dark:text-yellow-200 mb-2">Информация о логах</h5>
+                    <ul className="text-sm text-yellow-700 dark:text-yellow-300 space-y-1">
+                      <li>• <strong>Загрузки</strong> - логи процесса скачивания треков</li>
+                      <li>• <strong>Ошибки</strong> - только ошибки и исключения</li>
+                      <li>• <strong>Основные</strong> - все логи приложения</li>
+                      <li>• <strong>Все логи</strong> - объединенные логи всех типов</li>
+                      <li>• Логи автоматически ротируются при достижении 10 МБ</li>
+                      <li>• Для отладки FLAC смотрите логи "Загрузки"</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
           )}

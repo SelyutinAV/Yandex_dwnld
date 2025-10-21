@@ -74,3 +74,22 @@ CURSOR_SETUP.md
 CURSOR_SETUP_COMPLETE.md
 OPTIMIZATION.md
 RECOVERY_GUIDE.md
+
+# Scripts and utilities
+clear_logs.sh
+restart_with_logs.sh
+view_logs.sh
+
+# Contexts and configurations
+frontend/src/contexts/
+
+# Documentation guides
+docs/CHANGELOG_FLAC.md
+docs/CHECK_BROWSER_FLAC.md
+docs/DIAGNOSTIC.md
+docs/FLAC_DOWNLOAD_GUIDE.md
+docs/GIT_COMMIT_GUIDE.md
+docs/LOGGING_GUIDE.md
+docs/LOGS_INTERFACE_GUIDE.md
+docs/RESTART_BACKEND.md
+docs/TOKEN_INSTRUCTIONS.md

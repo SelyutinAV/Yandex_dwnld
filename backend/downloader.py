@@ -41,43 +41,122 @@ class DownloadManager:
             quality: Качество аудио
             progress_callback: Функция для отслеживания прогресса
         """
+        print(f"Начинаем загрузку плейлиста {playlist_id} с качеством {quality}")
+        
         # Получаем треки плейлиста
         tracks = self.client.get_playlist_tracks(playlist_id)
         total_tracks = len(tracks)
+        print(f"Найдено треков в плейлисте: {total_tracks}")
+        
+        # Получаем название плейлиста для создания папки
+        playlist_name = self.client.get_playlist_name(playlist_id)
+        if not playlist_name:
+            playlist_name = f"Playlist_{playlist_id}"
+        
+        # Сначала добавляем все треки в очередь базы данных
+        from db_manager import db_manager
+        from datetime import datetime
+        
+        added_tracks = []
+        for track in tracks:
+            if not track['available']:
+                continue
+                
+            try:
+                # Добавляем трек в очередь
+                with db_manager.get_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    # Проверяем, не добавлен ли уже этот трек
+                    cursor.execute("SELECT id FROM download_queue WHERE track_id = ?", (track['id'],))
+                    if cursor.fetchone():
+                        continue
+                    
+                    # Добавляем трек в очередь
+                    cursor.execute("""
+                        INSERT INTO download_queue 
+                        (track_id, title, artist, album, status, progress, quality, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?)
+                    """, (
+                        track['id'],
+                        track['title'],
+                        track['artist'],
+                        track.get('album', 'Unknown Album'),
+                        quality,
+                        datetime.now().isoformat(),
+                        datetime.now().isoformat()
+                    ))
+                    
+                    conn.commit()
+                    added_tracks.append(track)
+                    
+            except Exception as e:
+                print(f"Ошибка добавления трека {track['title']} в очередь: {e}")
+        
+        print(f"Добавлено в очередь: {len(added_tracks)} треков")
         
         results = {
-            'total': total_tracks,
+            'total': len(added_tracks),
             'completed': 0,
             'failed': 0,
             'skipped': 0,
             'tracks': []
         }
         
-        for index, track in enumerate(tracks, 1):
-            if not track['available']:
-                results['skipped'] += 1
-                continue
-            
+        # Теперь загружаем треки по одному
+        for index, track in enumerate(added_tracks, 1):
             try:
-                # Формируем путь для сохранения
+                # Обновляем статус на "downloading"
+                with db_manager.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE download_queue 
+                        SET status = 'downloading', updated_at = ?
+                        WHERE track_id = ?
+                    """, (datetime.now().isoformat(), track['id']))
+                    conn.commit()
+                # Формируем путь для сохранения: {playlist}/{artist}/{album}
+                playlist_folder = self._sanitize_filename(playlist_name)
                 artist_folder = self._sanitize_filename(track['artist'])
                 album_folder = self._sanitize_filename(
                     track['album'] or 'Unknown Album'
                 )
                 
-                save_path = self.download_path / artist_folder / album_folder
+                save_path = self.download_path / playlist_folder / artist_folder / album_folder
                 save_path.mkdir(parents=True, exist_ok=True)
                 
                 # Скачиваем трек
+                print(f"Загружаем трек {index}/{len(added_tracks)}: {track['title']} - {track['artist']}")
+                
+                # Создаем callback для прогресса трека
+                def track_progress_callback(bytes_downloaded, total_bytes, progress_percent):
+                    # Обновляем прогресс в базе данных
+                    try:
+                        from db_manager import db_manager
+                        db_manager.update_download_progress(track['id'], int(progress_percent))
+                    except Exception as e:
+                        print(f"Ошибка обновления прогресса: {e}")
+                
                 file_path = self.client.download_track(
                     track['id'],
                     str(save_path),
-                    quality
+                    quality,
+                    progress_callback=track_progress_callback
                 )
                 
                 if file_path:
                     # Добавляем метаданные
                     self._add_metadata(file_path, track)
+                    
+                    # Обновляем статус на "completed" в базе данных
+                    with db_manager.get_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            UPDATE download_queue 
+                            SET status = 'completed', progress = 100, updated_at = ?
+                            WHERE track_id = ?
+                        """, (datetime.now().isoformat(), track['id']))
+                        conn.commit()
                     
                     results['completed'] += 1
                     results['tracks'].append({
@@ -88,18 +167,38 @@ class DownloadManager:
                         'status': 'completed'
                     })
                 else:
+                    # Обновляем статус на "error" в базе данных
+                    with db_manager.get_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            UPDATE download_queue 
+                            SET status = 'error', updated_at = ?
+                            WHERE track_id = ?
+                        """, (datetime.now().isoformat(), track['id']))
+                        conn.commit()
+                    
                     results['failed'] += 1
                     
             except Exception as e:
                 print(f"Ошибка загрузки {track['title']}: {e}")
+                # Обновляем статус на "error" в базе данных
+                with db_manager.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE download_queue 
+                        SET status = 'error', error_message = ?, updated_at = ?
+                        WHERE track_id = ?
+                    """, (str(e), datetime.now().isoformat(), track['id']))
+                    conn.commit()
+                
                 results['failed'] += 1
             
             # Вызываем callback для обновления прогресса
             if progress_callback:
                 if asyncio.iscoroutinefunction(progress_callback):
-                    await progress_callback(index, total_tracks, track)
+                    await progress_callback(index, len(added_tracks), track)
                 else:
-                    progress_callback(index, total_tracks, track)
+                    progress_callback(index, len(added_tracks), track)
         
         return results
     
@@ -107,7 +206,8 @@ class DownloadManager:
         self,
         track_id: str,
         track_info: dict,
-        quality: str = 'lossless'
+        quality: str = 'lossless',
+        playlist_name: str = None
     ) -> Optional[str]:
         """
         Асинхронная загрузка одного трека
@@ -116,17 +216,24 @@ class DownloadManager:
             track_id: ID трека
             track_info: Информация о треке
             quality: Качество
+            playlist_name: Название плейлиста (опционально)
             
         Returns:
             Путь к файлу или None
         """
         try:
+            # Если название плейлиста не передано, используем название из track_info
+            if not playlist_name:
+                playlist_name = track_info.get('playlist_name', 'Unknown Playlist')
+            
+            # Формируем путь для сохранения: {playlist}/{artist}/{album}
+            playlist_folder = self._sanitize_filename(playlist_name)
             artist_folder = self._sanitize_filename(track_info['artist'])
             album_folder = self._sanitize_filename(
                 track_info.get('album', 'Unknown Album')
             )
             
-            save_path = self.download_path / artist_folder / album_folder
+            save_path = self.download_path / playlist_folder / artist_folder / album_folder
             save_path.mkdir(parents=True, exist_ok=True)
             
             file_path = self.client.download_track(

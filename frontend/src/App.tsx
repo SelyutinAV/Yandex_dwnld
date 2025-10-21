@@ -5,12 +5,14 @@ import FileAnalyzer from './components/FileAnalyzer'
 import PlaylistManager from './components/PlaylistManager'
 import SettingsPanel from './components/SettingsPanel'
 import { StatusBadge } from './components/ui/StatusBadge'
+import { AppProvider, useAppContext } from './contexts/AppContext'
 
 type Tab = 'playlists' | 'downloads' | 'files' | 'settings'
 
-function App() {
+function AppContent() {
   const [activeTab, setActiveTab] = useState<Tab>('playlists')
   const [isConnected, setIsConnected] = useState(false)
+  const { state } = useAppContext()
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
@@ -21,11 +23,19 @@ function App() {
               <Music size={32} />
               <h1 className="text-3xl font-bold">Yandex Music Downloader</h1>
             </div>
-            <StatusBadge
-              status={isConnected ? 'connected' : 'disconnected'}
-            >
-              {isConnected ? 'Подключено' : 'Не подключено'}
-            </StatusBadge>
+            <div className="flex items-center gap-4">
+              {state.isDownloading && (
+                <div className="flex items-center gap-2 text-sm bg-white/20 px-3 py-1 rounded-lg">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span>Скачивание: {state.downloadProgress}%</span>
+                </div>
+              )}
+              <StatusBadge
+                status={isConnected ? 'connected' : 'disconnected'}
+              >
+                {isConnected ? 'Подключено' : 'Не подключено'}
+              </StatusBadge>
+            </div>
           </div>
         </div>
       </header>
@@ -35,8 +45,8 @@ function App() {
           <div className="flex gap-2">
             <button
               className={`flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 ${activeTab === 'playlists'
-                  ? 'bg-primary-500 text-white shadow-lg'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'
+                ? 'bg-primary-500 text-white shadow-lg'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
               onClick={() => setActiveTab('playlists')}
             >
@@ -45,8 +55,8 @@ function App() {
             </button>
             <button
               className={`flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 ${activeTab === 'downloads'
-                  ? 'bg-primary-500 text-white shadow-lg'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'
+                ? 'bg-primary-500 text-white shadow-lg'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
               onClick={() => setActiveTab('downloads')}
             >
@@ -55,8 +65,8 @@ function App() {
             </button>
             <button
               className={`flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 ${activeTab === 'files'
-                  ? 'bg-primary-500 text-white shadow-lg'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'
+                ? 'bg-primary-500 text-white shadow-lg'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
               onClick={() => setActiveTab('files')}
             >
@@ -65,8 +75,8 @@ function App() {
             </button>
             <button
               className={`flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 ${activeTab === 'settings'
-                  ? 'bg-primary-500 text-white shadow-lg'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'
+                ? 'bg-primary-500 text-white shadow-lg'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
               onClick={() => setActiveTab('settings')}
             >
@@ -79,13 +89,21 @@ function App() {
 
       <main className="flex-1 p-8">
         <div className="max-w-7xl mx-auto">
-          {activeTab === 'playlists' && <PlaylistManager />}
-          {activeTab === 'downloads' && <DownloadQueue />}
-          {activeTab === 'files' && <FileAnalyzer />}
-          {activeTab === 'settings' && <SettingsPanel onConnectionChange={setIsConnected} />}
+          {activeTab === 'playlists' && <PlaylistManager key={state.refreshTrigger} />}
+          {activeTab === 'downloads' && <DownloadQueue key={state.refreshTrigger} />}
+          {activeTab === 'files' && <FileAnalyzer key={state.refreshTrigger} />}
+          {activeTab === 'settings' && <SettingsPanel onConnectionChange={setIsConnected} key={state.refreshTrigger} />}
         </div>
       </main>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <AppProvider>
+      <AppContent />
+    </AppProvider>
   )
 }
 

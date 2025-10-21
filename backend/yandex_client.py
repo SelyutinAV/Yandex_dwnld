@@ -1,9 +1,14 @@
 """
 Клиент для работы с API Яндекс.Музыки
 """
-from typing import List, Optional
+from typing import List, Optional, Callable
 from yandex_music import Client, Playlist, Track
 import os
+import logging
+
+# Логгер для Яндекс клиента
+logger = logging.getLogger('yandex')
+download_logger = logging.getLogger('download')
 
 
 class YandexMusicClient:
@@ -18,6 +23,7 @@ class YandexMusicClient:
         """
         self.token = token
         self.client: Optional[Client] = None
+        self.uid: Optional[int] = None
         
     def connect(self) -> bool:
         """
@@ -51,6 +57,8 @@ class YandexMusicClient:
                     account = self.client.account_status()
                     if account:
                         print(f"Успешно подключились к аккаунту: {account.account.login}")
+                        # Сохраняем UID для дальнейшего использования
+                        self.uid = account.account.uid
                         return True
                 except Exception as account_error:
                     print(f"Ошибка проверки аккаунта: {account_error}")
@@ -60,6 +68,8 @@ class YandexMusicClient:
                         user_info = self.client.me()
                         if user_info:
                             print(f"Успешно подключились к пользователю: {user_info.login}")
+                            # Сохраняем UID для дальнейшего использования
+                            self.uid = user_info.uid
                             return True
                     except Exception as user_error:
                         print(f"Ошибка получения информации о пользователе: {user_error}")
@@ -117,35 +127,31 @@ class YandexMusicClient:
             # Получаем плейлисты пользователя
             try:
                 # Сначала пробуем с UID
-                if account.account.uid:
-                    playlists = self.client.users_playlists_list(account.account.uid)
+                uid_to_use = account.account.uid or self.uid
+                if uid_to_use:
+                    print(f"Используем UID: {uid_to_use}")
+                    playlists = self.client.users_playlists_list(uid_to_use)
                 else:
                     raise Exception("UID не найден")
             except Exception as playlist_error:
                 print(f"❌ Ошибка получения плейлистов с UID: {playlist_error}")
                 # Попробуем с логином пользователя
                 try:
-                    if account.account.login:
-                        playlists = self.client.users_playlists_list(account.account.login)
+                    login_to_use = account.account.login or username
+                    if login_to_use:
+                        print(f"🔄 Пробуем с логином: {login_to_use}")
+                        playlists = self.client.users_playlists_list(login_to_use)
                     else:
                         raise Exception("Логин не найден")
                 except Exception as login_error:
                     print(f"❌ Ошибка получения плейлистов с логином: {login_error}")
-                    # Попробуем с переданным логином
+                    # Попробуем без параметров
                     try:
-                        if username:
-                            print(f"🔄 Пробуем с переданным логином: {username}")
-                            playlists = self.client.users_playlists_list(username)
-                        else:
-                            raise Exception("Логин не передан")
-                    except Exception as username_error:
-                        print(f"❌ Ошибка получения плейлистов с переданным логином: {username_error}")
-                        # Попробуем без параметров
-                        try:
-                            playlists = self.client.users_playlists_list()
-                        except Exception as fallback_error:
-                            print(f"❌ Ошибка получения плейлистов (fallback): {fallback_error}")
-                            return []
+                        print("🔄 Пробуем без параметров...")
+                        playlists = self.client.users_playlists_list()
+                    except Exception as fallback_error:
+                        print(f"❌ Ошибка получения плейлистов (fallback): {fallback_error}")
+                        return []
             
             result = []
             
@@ -248,10 +254,28 @@ class YandexMusicClient:
             if not self.client:
                 raise Exception("Клиент не инициализирован")
             
-            playlist = self.client.users_playlists(playlist_id)
+            print(f"Получаем плейлист {playlist_id}")
+            # Для получения треков плейлиста нужен UID пользователя
+            # Попробуем использовать username из базы данных
+            try:
+                from db_manager import DatabaseManager
+                db_manager = DatabaseManager()
+                token_info = db_manager.get_active_token()
+                username = token_info.get('username') if token_info else None
+                
+                if username:
+                    print(f"Используем username: {username}")
+                    playlist = self.client.users_playlists(playlist_id, username)
+                else:
+                    playlist = self.client.users_playlists(playlist_id)
+            except Exception as e:
+                print(f"Ошибка получения плейлиста с username: {e}")
+                playlist = self.client.users_playlists(playlist_id)
+            
             if not playlist:
                 raise Exception(f"Плейлист с ID {playlist_id} не найден")
             
+            print(f"Плейлист найден: {playlist.title}")
             tracks = playlist.fetch_tracks()
             if not tracks:
                 tracks = []
@@ -305,7 +329,8 @@ class YandexMusicClient:
         self, 
         track_id: str, 
         output_path: str,
-        quality: str = 'lossless'
+        quality: str = 'lossless',
+        progress_callback: Optional[Callable] = None
     ) -> Optional[str]:
         """
         Скачать трек
@@ -314,6 +339,7 @@ class YandexMusicClient:
             track_id: ID трека
             output_path: Путь для сохранения
             quality: Качество (lossless, hq, nq)
+            progress_callback: Функция для отслеживания прогресса (bytes_downloaded, total_bytes)
             
         Returns:
             Путь к скачанному файлу или None в случае ошибки
@@ -327,33 +353,97 @@ class YandexMusicClient:
             if not self.client:
                 raise Exception("Клиент не инициализирован")
             
+            download_logger.info(f"🎵 Загружаем трек с ID: {track_id}")
             tracks_result = self.client.tracks([track_id])
             if not tracks_result or len(tracks_result) == 0:
                 raise Exception(f"Трек с ID {track_id} не найден")
             
             track = tracks_result[0]
+            artist_name = track.artists[0].name if track.artists else 'Unknown'
+            download_logger.info(f"✅ Найден трек: {track.title} - {artist_name}")
             
             # Получаем информацию о файле для скачивания
+            download_logger.info(f"📥 Запрашиваем доступные форматы...")
             download_info = track.get_download_info(get_direct_links=True)
             
-            # Выбираем качество
-            codec_priority = {
-                'lossless': ['flac', 'aac', 'mp3'],
-                'hq': ['aac', 'mp3'],
-                'nq': ['mp3']
-            }
+            # Детальная информация о доступных форматах
+            download_logger.info(f"📋 Доступно форматов: {len(download_info)}")
+            for info in download_info:
+                download_logger.info(f"   • {info.codec.upper()}: {info.bitrate_in_kbps} kbps")
             
+            # УЛУЧШЕННАЯ ЛОГИКА ВЫБОРА КАЧЕСТВА
             selected_info = None
-            for codec in codec_priority.get(quality, ['mp3']):
+            
+            if quality == 'lossless':
+                # Для lossless СТРОГО ищем FLAC
+                download_logger.info(f"🎯 Поиск FLAC формата для lossless качества...")
                 for info in download_info:
-                    if info.codec == codec:
+                    if info.codec == 'flac':
                         selected_info = info
+                        download_logger.info(f"✅ FLAC найден! Битрейт: {info.bitrate_in_kbps} kbps")
                         break
-                if selected_info:
-                    break
+                
+                if not selected_info:
+                    download_logger.warning("⚠️  FLAC недоступен!")
+                    # Проверяем подписку
+                    try:
+                        account = self.client.account_status()
+                        if account and not account.plus:
+                            download_logger.warning("❌ FLAC доступен только с подпиской Яндекс.Плюс!")
+                            download_logger.info("   Будет выбран лучший доступный формат.")
+                    except:
+                        pass
+                    
+                    # Выбираем формат с максимальным битрейтом
+                    sorted_formats = sorted(
+                        download_info, 
+                        key=lambda x: x.bitrate_in_kbps or 0, 
+                        reverse=True
+                    )
+                    selected_info = sorted_formats[0]
+                    download_logger.info(f"➡️  Выбран лучший доступный: {selected_info.codec.upper()} ({selected_info.bitrate_in_kbps} kbps)")
+            
+            elif quality == 'hq':
+                # Для HQ ищем AAC с максимальным битрейтом или MP3 320
+                download_logger.info(f"🎯 Поиск HQ формата...")
+                aac_formats = [info for info in download_info if info.codec == 'aac']
+                if aac_formats:
+                    selected_info = max(aac_formats, key=lambda x: x.bitrate_in_kbps or 0)
+                    download_logger.info(f"✅ AAC найден: {selected_info.bitrate_in_kbps} kbps")
+                else:
+                    # Ищем MP3 с максимальным битрейтом
+                    mp3_formats = [info for info in download_info if info.codec == 'mp3']
+                    if mp3_formats:
+                        selected_info = max(mp3_formats, key=lambda x: x.bitrate_in_kbps or 0)
+                        download_logger.info(f"✅ MP3 найден: {selected_info.bitrate_in_kbps} kbps")
+            
+            else:  # 'nq' или другое
+                # Для NQ ищем MP3 со средним битрейтом
+                download_logger.info(f"🎯 Поиск NQ формата...")
+                mp3_formats = [info for info in download_info if info.codec == 'mp3']
+                if mp3_formats:
+                    # Берем MP3 с минимальным битрейтом (для nq)
+                    selected_info = min(mp3_formats, key=lambda x: x.bitrate_in_kbps or 0)
+                    download_logger.info(f"✅ MP3 найден: {selected_info.bitrate_in_kbps} kbps")
+            
+            # Если ничего не выбрали, берем первый доступный
+            if not selected_info and download_info:
+                selected_info = download_info[0]
+                download_logger.warning(f"⚠️  Используем первый доступный формат: {selected_info.codec.upper()}")
             
             if not selected_info:
-                selected_info = download_info[0]
+                raise Exception("Нет доступных форматов для скачивания")
+            
+            download_logger.info(f"🎯 ВЫБРАН: {selected_info.codec.upper()} ({selected_info.bitrate_in_kbps} kbps)")
+            
+            # Получаем прямую ссылку для логирования
+            try:
+                direct_link = selected_info.get_direct_link()
+                download_logger.debug(f"🔗 Прямая ссылка получена: {direct_link[:80]}...")
+                if 'ysign1=' in direct_link:
+                    download_logger.debug("🔑 Подпись присутствует в URL")
+            except Exception as e:
+                download_logger.warning(f"⚠️  Не удалось получить прямую ссылку для логирования: {e}")
             
             # Формируем имя файла
             artist = track.artists[0].name if track.artists else 'Unknown'
@@ -365,17 +455,123 @@ class YandexMusicClient:
             filename = "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.'))
             
             filepath = os.path.join(output_path, filename)
+            download_logger.info(f"💾 Сохраняем в: {filepath}")
             
-            # Скачиваем файл
-            selected_info.download(filepath)
+            # Скачиваем файл с отслеживанием прогресса
+            download_logger.info("📥 Начинаем скачивание...")
             
-            # TODO: Добавить метаданные с помощью mutagen
+            if progress_callback:
+                # Скачиваем с отслеживанием прогресса
+                self._download_with_progress(selected_info, filepath, progress_callback)
+            else:
+                # Обычное скачивание без прогресса
+                selected_info.download(filepath)
+            
+            # Проверяем, что файл действительно создался
+            if os.path.exists(filepath):
+                file_size = os.path.getsize(filepath) / (1024 * 1024)  # в МБ
+                download_logger.info(f"✅ Файл успешно скачан!")
+                download_logger.info(f"   Размер: {file_size:.2f} МБ")
+                download_logger.info(f"   Путь: {filepath}")
+            else:
+                download_logger.error("❌ ОШИБКА: Файл не был создан!")
+                return None
             
             return filepath
             
         except Exception as e:
-            print(f"Ошибка скачивания трека {track_id}: {e}")
+            download_logger.error(f"❌ Ошибка скачивания трека {track_id}: {e}", exc_info=True)
             return None
+    
+    def get_playlist_name(self, playlist_id: str) -> Optional[str]:
+        """
+        Получить название плейлиста по ID
+        
+        Args:
+            playlist_id: ID плейлиста
+            
+        Returns:
+            Название плейлиста или None
+        """
+        if not self.client:
+            if not self.connect():
+                print("Не удалось подключиться к Яндекс.Музыке")
+                return None
+        
+        try:
+            if not self.client:
+                raise Exception("Клиент не инициализирован")
+            
+            # Для плейлиста "Мне нравится" возвращаем специальное название
+            if playlist_id == 'likes':
+                return 'Мне нравится'
+            
+            # Пробуем получить плейлист с username из базы данных
+            try:
+                from db_manager import DatabaseManager
+                db_manager = DatabaseManager()
+                token_info = db_manager.get_active_token()
+                username = token_info.get('username') if token_info else None
+                
+                if username:
+                    playlist = self.client.users_playlists(playlist_id, username)
+                else:
+                    playlist = self.client.users_playlists(playlist_id)
+            except Exception as e:
+                print(f"Ошибка получения плейлиста с username: {e}")
+                playlist = self.client.users_playlists(playlist_id)
+            
+            if playlist and playlist.title:
+                return playlist.title
+            else:
+                return f"Playlist_{playlist_id}"
+            
+        except Exception as e:
+            print(f"Ошибка получения названия плейлиста {playlist_id}: {e}")
+            return f"Playlist_{playlist_id}"
+    
+    def _download_with_progress(self, download_info, filepath: str, progress_callback: Callable):
+        """
+        Скачать файл с отслеживанием прогресса
+        
+        Args:
+            download_info: Информация о загрузке от yandex-music
+            filepath: Путь для сохранения файла
+            progress_callback: Функция для отслеживания прогресса
+        """
+        import requests
+        
+        try:
+            # Получаем прямую ссылку
+            direct_link = download_info.get_direct_link()
+            
+            # Получаем размер файла
+            response = requests.head(direct_link, allow_redirects=True)
+            total_size = int(response.headers.get('content-length', 0))
+            
+            download_logger.info(f"📊 Размер файла: {total_size / (1024*1024):.2f} МБ")
+            
+            # Скачиваем с прогрессом
+            response = requests.get(direct_link, stream=True)
+            response.raise_for_status()
+            
+            downloaded = 0
+            with open(filepath, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        
+                        # Вызываем callback с прогрессом
+                        if total_size > 0:
+                            progress_percent = (downloaded / total_size) * 100
+                            progress_callback(downloaded, total_size, progress_percent)
+                        else:
+                            progress_callback(downloaded, 0, 0)
+                            
+        except Exception as e:
+            download_logger.error(f"Ошибка скачивания с прогрессом: {e}")
+            raise
     
     def _get_cover_url(self, playlist: Playlist) -> Optional[str]:
         """
