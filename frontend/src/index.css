@@ -1,113 +1,102 @@
-:root {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #0f0f0f;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-#root {
-  width: 100%;
-}
-
-h1 {
-  font-size: 2.2em;
-  line-height: 1.1;
-  margin-bottom: 0.5em;
-}
-
-h2 {
-  font-size: 1.8em;
-  margin-bottom: 0.5em;
-}
-
-h3 {
-  font-size: 1.4em;
-  margin-bottom: 0.4em;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: all 0.25s;
-  color: white;
-}
-
-button:hover {
-  border-color: #646cff;
-  background-color: #252525;
-}
-
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-input, select {
-  padding: 0.6em;
-  font-size: 1em;
-  border-radius: 4px;
-  border: 1px solid #444;
-  background-color: #1a1a1a;
-  color: white;
-  font-family: inherit;
-}
-
-input:focus, select:focus {
-  outline: none;
-  border-color: #646cff;
-}
-
-@media (prefers-color-scheme: light) {
+@layer base {
   :root {
-    color: #213547;
-    background-color: #ffffff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    @apply box-border;
+  }
+
+  body {
+    @apply m-0 flex min-w-80 min-h-screen;
+  }
+
+  #root {
+    @apply w-full;
+  }
+
+  h1 {
+    @apply text-4xl leading-tight mb-2;
+  }
+
+  h2 {
+    @apply text-3xl mb-2;
+  }
+
+  h3 {
+    @apply text-2xl mb-1;
   }
 
   button {
-    background-color: #f9f9f9;
-    color: #213547;
+    @apply rounded-lg border border-transparent px-5 py-2 text-base font-medium font-sans cursor-pointer transition-all duration-200;
   }
 
-  button:hover {
-    background-color: #e9e9e9;
+  button:focus,
+  button:focus-visible {
+    @apply outline-none ring-2 ring-offset-2 ring-primary-500;
   }
 
-  input, select {
-    background-color: #f9f9f9;
-    color: #213547;
-    border-color: #ccc;
+  button:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  input,
+  select {
+    @apply px-3 py-2 text-base rounded border font-sans;
+  }
+
+  input:focus,
+  select:focus {
+    @apply outline-none ring-2 ring-offset-2 ring-primary-500;
   }
 }
 
+@layer components {
+
+  /* Переиспользуемые компоненты */
+  .btn-primary {
+    @apply bg-gradient-to-r from-primary-500 to-secondary-500 text-white hover:shadow-lg hover:-translate-y-0.5 focus:ring-primary-500;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 focus:ring-gray-500;
+  }
+
+  .btn-success {
+    @apply bg-success-500 text-white hover:bg-success-600 focus:ring-success-500;
+  }
+
+  .btn-error {
+    @apply bg-error-500 text-white hover:bg-error-600 focus:ring-error-500;
+  }
+
+  .card {
+    @apply bg-white dark:bg-gray-900 rounded-xl shadow-soft border border-gray-200 dark:border-gray-700;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all duration-200;
+  }
+
+  .status-indicator {
+    @apply w-2.5 h-2.5 rounded-full animate-pulse-slow;
+  }
+
+  .status-connected {
+    @apply bg-success-500;
+  }
+
+  .status-disconnected {
+    @apply bg-error-500;
+  }
+}

@@ -1,6 +1,8 @@
 import { Check, Edit, Key, Plus, Save, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import './TokenManager.css'
+import { Button } from './ui/Button'
+import { Card } from './ui/Card'
+import { Input } from './ui/Input'
 
 interface SavedToken {
     id: number
@@ -176,182 +178,205 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
     }, [])
 
     const getTokenTypeColor = useCallback((type: string) => {
-        return type === 'oauth' ? '#4ade80' : '#667eea'
+        return type === 'oauth' ? 'bg-success-500' : 'bg-primary-500'
     }, [])
 
     if (isLoading) {
         return (
-            <div className="token-manager">
-                <h3>
-                    <Key size={20} />
-                    Управление токенами
-                </h3>
-                <div className="loading">Загрузка токенов...</div>
-            </div>
+            <Card className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                    <Key size={20} className="text-primary-500" />
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Управление токенами</h3>
+                </div>
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                    Загрузка токенов...
+                </div>
+            </Card>
         )
     }
 
     return (
-        <div className="token-manager">
-            <div className="token-manager-header">
-                <h3>
-                    <Key size={20} />
-                    Управление токенами
-                </h3>
-                <button
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <Key size={20} className="text-primary-500" />
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Управление токенами</h3>
+                </div>
+                <Button
+                    variant="primary"
                     onClick={() => setShowAddForm(true)}
-                    className="add-token-button"
+                    icon={Plus}
                 >
-                    <Plus size={16} />
                     Добавить токен
-                </button>
+                </Button>
             </div>
 
             {showAddForm && (
-                <div className="add-token-form">
-                    <h4>Добавить новый токен</h4>
-                    <div className="form-group">
-                        <label>Название токена:</label>
-                        <input
-                            type="text"
+                <Card className="p-6">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Добавить новый токен</h4>
+                    <div className="space-y-4">
+                        <Input
+                            label="Название токена"
                             value={newTokenName}
-                            onChange={(e) => setNewTokenName(e.target.value)}
+                            onChange={setNewTokenName}
                             placeholder="Например: Мой аккаунт"
                         />
+                        <div>
+                            <label className="block text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
+                                Токен
+                            </label>
+                            <textarea
+                                value={newToken}
+                                onChange={(e) => setNewToken(e.target.value)}
+                                placeholder="Вставьте токен..."
+                                rows={3}
+                                className="input-field resize-none"
+                            />
+                        </div>
+                        <div className="flex gap-3 justify-end">
+                            <Button
+                                variant="secondary"
+                                onClick={() => {
+                                    setShowAddForm(false)
+                                    setNewTokenName('')
+                                    setNewToken('')
+                                }}
+                                icon={X}
+                            >
+                                Отмена
+                            </Button>
+                            <Button
+                                variant="success"
+                                onClick={saveToken}
+                                disabled={isSaving || !newTokenName.trim() || !newToken.trim()}
+                                loading={isSaving}
+                                icon={Save}
+                            >
+                                {isSaving ? 'Сохранение...' : 'Сохранить'}
+                            </Button>
+                        </div>
                     </div>
-                    <div className="form-group">
-                        <label>Токен:</label>
-                        <textarea
-                            value={newToken}
-                            onChange={(e) => setNewToken(e.target.value)}
-                            placeholder="Вставьте токен..."
-                            rows={3}
-                        />
-                    </div>
-                    <div className="form-actions">
-                        <button
-                            onClick={() => {
-                                setShowAddForm(false)
-                                setNewTokenName('')
-                                setNewToken('')
-                            }}
-                            className="cancel-button"
-                        >
-                            <X size={16} />
-                            Отмена
-                        </button>
-                        <button
-                            onClick={saveToken}
-                            disabled={isSaving || !newTokenName.trim() || !newToken.trim()}
-                            className="save-button"
-                        >
-                            <Save size={16} />
-                            {isSaving ? 'Сохранение...' : 'Сохранить'}
-                        </button>
-                    </div>
-                </div>
+                </Card>
             )}
 
-            <div className="tokens-list">
+            <div className="space-y-4">
                 {tokens.length === 0 ? (
-                    <div className="no-tokens">
-                        <p>Нет сохраненных токенов</p>
+                    <Card className="text-center py-12 text-gray-500 dark:text-gray-400">
+                        <p className="mb-2">Нет сохраненных токенов</p>
                         <p>Добавьте токен, чтобы начать работу</p>
-                    </div>
+                    </Card>
                 ) : (
                     tokens.map((token) => (
-                        <div
+                        <Card
                             key={token.id}
-                            className={`token-item ${token.is_active ? 'active' : ''}`}
+                            className={`p-6 transition-all duration-200 ${token.is_active
+                                    ? 'ring-2 ring-success-500 bg-success-50 dark:bg-success-900/20'
+                                    : 'hover:ring-2 hover:ring-primary-200 dark:hover:ring-primary-800'
+                                }`}
                         >
-                            <div className="token-info">
-                                <div className="token-header">
-                                    {editingTokenId === token.id ? (
-                                        <div className="edit-name-container">
-                                            <input
-                                                type="text"
-                                                value={editingTokenName}
-                                                onChange={(e) => setEditingTokenName(e.target.value)}
-                                                className="edit-name-input"
-                                                autoFocus
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        saveRename()
-                                                    } else if (e.key === 'Escape') {
-                                                        cancelEditing()
-                                                    }
-                                                }}
-                                            />
-                                            <button
-                                                onClick={saveRename}
-                                                className="save-edit-button"
-                                                disabled={!editingTokenName.trim()}
+                            <div className="flex items-start justify-between">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        {editingTokenId === token.id ? (
+                                            <div className="flex items-center gap-2 flex-1">
+                                                <input
+                                                    type="text"
+                                                    value={editingTokenName}
+                                                    onChange={(e) => setEditingTokenName(e.target.value)}
+                                                    className="flex-1 px-3 py-1 border-2 border-primary-500 rounded-lg text-base font-semibold bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:border-success-500 focus:ring-2 focus:ring-success-500/20"
+                                                    autoFocus
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            saveRename()
+                                                        } else if (e.key === 'Escape') {
+                                                            cancelEditing()
+                                                        }
+                                                    }}
+                                                />
+                                                <Button
+                                                    variant="success"
+                                                    size="sm"
+                                                    onClick={saveRename}
+                                                    disabled={!editingTokenName.trim()}
+                                                    icon={Check}
+                                                    className="p-2"
+                                                >
+                                                    Сохранить
+                                                </Button>
+                                                <Button
+                                                    variant="error"
+                                                    size="sm"
+                                                    onClick={cancelEditing}
+                                                    icon={X}
+                                                    className="p-2"
+                                                >
+                                                    Отмена
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
+                                                {token.name}
+                                            </h4>
+                                        )}
+                                        <div className="flex gap-2">
+                                            <span
+                                                className={`px-2 py-1 rounded text-xs font-semibold text-white ${getTokenTypeColor(token.token_type)}`}
                                             >
-                                                <Check size={14} />
-                                            </button>
-                                            <button
-                                                onClick={cancelEditing}
-                                                className="cancel-edit-button"
-                                            >
-                                                <X size={14} />
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <h4>{token.name}</h4>
-                                    )}
-                                    <div className="token-badges">
-                                        <span
-                                            className="token-type-badge"
-                                            style={{ backgroundColor: getTokenTypeColor(token.token_type) }}
-                                        >
-                                            {getTokenTypeLabel(token.token_type)}
-                                        </span>
-                                        {token.is_active && (
-                                            <span className="active-badge">
-                                                <Check size={12} />
-                                                Активный
+                                                {getTokenTypeLabel(token.token_type)}
                                             </span>
+                                            {token.is_active && (
+                                                <span className="flex items-center gap-1 px-2 py-1 bg-success-500 text-white rounded text-xs font-semibold">
+                                                    <Check size={12} />
+                                                    Активный
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="mb-3">
+                                        <code className="bg-gray-100 dark:bg-gray-800 text-success-600 dark:text-success-400 px-2 py-1 rounded text-sm font-mono">
+                                            {token.token_preview}
+                                        </code>
+                                    </div>
+                                    <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400">
+                                        <span>Создан: {new Date(token.created_at).toLocaleDateString()}</span>
+                                        {token.last_used && (
+                                            <span>Использован: {new Date(token.last_used).toLocaleDateString()}</span>
                                         )}
                                     </div>
                                 </div>
-                                <div className="token-preview">
-                                    <code>{token.token_preview}</code>
-                                </div>
-                                <div className="token-meta">
-                                    <span>Создан: {new Date(token.created_at).toLocaleDateString()}</span>
-                                    {token.last_used && (
-                                        <span>Использован: {new Date(token.last_used).toLocaleDateString()}</span>
+                                <div className="flex gap-2 ml-4">
+                                    {!token.is_active && (
+                                        <Button
+                                            variant="primary"
+                                            size="sm"
+                                            onClick={() => activateToken(token.id)}
+                                        >
+                                            Активировать
+                                        </Button>
                                     )}
+                                    {editingTokenId !== token.id && (
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => startEditing(token.id, token.name)}
+                                            icon={Edit}
+                                            className="p-2"
+                                        >
+                                            Редактировать
+                                        </Button>
+                                    )}
+                                    <Button
+                                        variant="error"
+                                        size="sm"
+                                        onClick={() => deleteToken(token.id)}
+                                        icon={Trash2}
+                                        className="p-2"
+                                    >
+                                        Удалить
+                                    </Button>
                                 </div>
                             </div>
-                            <div className="token-actions">
-                                {!token.is_active && (
-                                    <button
-                                        onClick={() => activateToken(token.id)}
-                                        className="activate-button"
-                                        title="Активировать токен"
-                                    >
-                                        Активировать
-                                    </button>
-                                )}
-                                {editingTokenId !== token.id && (
-                                    <button
-                                        onClick={() => startEditing(token.id, token.name)}
-                                        className="edit-button"
-                                        title="Переименовать токен"
-                                    >
-                                        <Edit size={16} />
-                                    </button>
-                                )}
-                                <button
-                                    onClick={() => deleteToken(token.id)}
-                                    className="delete-button"
-                                    title="Удалить токен"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
-                            </div>
-                        </div>
+                        </Card>
                     ))
                 )}
             </div>

@@ -12,9 +12,12 @@ import {
   WifiOff
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import './SettingsPanel.css'
 import TokenHelper from './TokenHelper'
 import TokenManager from './TokenManager'
+import { Button } from './ui/Button'
+import { Card } from './ui/Card'
+import { Input } from './ui/Input'
+import { StatusBadge } from './ui/StatusBadge'
 
 interface SettingsPanelProps {
   onConnectionChange: (connected: boolean) => void
@@ -73,16 +76,16 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   // Показываем индикатор загрузки
   if (isLoading) {
     return (
-      <div className="settings-panel">
-        <div className="settings-header">
+      <Card className="max-w-4xl mx-auto">
+        <div className="flex items-center gap-3 p-6 bg-gradient-to-r from-primary-500 to-secondary-500 text-white rounded-t-xl">
           <SettingsIcon size={24} />
-          <h2>Настройки</h2>
+          <h2 className="text-2xl font-semibold">Настройки</h2>
         </div>
-        <div className="loading-indicator">
-          <div className="spinner"></div>
+        <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
+          <div className="animate-spin rounded-full h-10 w-10 border-3 border-gray-300 border-t-primary-500 mb-4"></div>
           <p>Загрузка настроек...</p>
         </div>
-      </div>
+      </Card>
     )
   }
 
@@ -130,227 +133,224 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
     }
   }
 
+  const navSections = [
+    { id: 'tokens', label: 'Токены', icon: Key },
+    { id: 'download', label: 'Загрузка', icon: Download },
+    { id: 'files', label: 'Файлы', icon: FileText },
+    { id: 'sync', label: 'Синхронизация', icon: Clock }
+  ] as const
 
   return (
-    <div className="settings-panel">
+    <Card className="max-w-4xl mx-auto overflow-hidden">
       {/* Заголовок */}
-      <div className="settings-header">
-        <SettingsIcon size={24} />
-        <h2>Настройки</h2>
-        <div className="connection-status">
-          {isConnected ? (
-            <div className="status-connected">
-              <Wifi size={16} />
-              <span>Подключено</span>
-            </div>
-          ) : (
-            <div className="status-disconnected">
-              <WifiOff size={16} />
-              <span>Не подключено</span>
-            </div>
-          )}
+      <div className="flex items-center justify-between p-6 bg-gradient-to-r from-primary-500 to-secondary-500 text-white">
+        <div className="flex items-center gap-3">
+          <SettingsIcon size={24} />
+          <h2 className="text-2xl font-semibold">Настройки</h2>
         </div>
+        <StatusBadge
+          status={isConnected ? 'connected' : 'disconnected'}
+          icon={isConnected ? Wifi : WifiOff}
+        >
+          {isConnected ? 'Подключено' : 'Не подключено'}
+        </StatusBadge>
       </div>
 
       {/* Навигация по разделам */}
-      <div className="settings-nav">
-        <button
-          className={`nav-button ${activeSection === 'tokens' ? 'active' : ''}`}
-          onClick={() => setActiveSection('tokens')}
-        >
-          <Key size={18} />
-          <span>Токены</span>
-        </button>
-        <button
-          className={`nav-button ${activeSection === 'download' ? 'active' : ''}`}
-          onClick={() => setActiveSection('download')}
-        >
-          <Download size={18} />
-          <span>Загрузка</span>
-        </button>
-        <button
-          className={`nav-button ${activeSection === 'files' ? 'active' : ''}`}
-          onClick={() => setActiveSection('files')}
-        >
-          <FileText size={18} />
-          <span>Файлы</span>
-        </button>
-        <button
-          className={`nav-button ${activeSection === 'sync' ? 'active' : ''}`}
-          onClick={() => setActiveSection('sync')}
-        >
-          <Clock size={18} />
-          <span>Синхронизация</span>
-        </button>
+      <div className="flex bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+        {navSections.map((section) => {
+          const Icon = section.icon
+          return (
+            <button
+              key={section.id}
+              className={`flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap transition-all duration-200 border-b-3 border-transparent ${activeSection === section.id
+                  ? 'text-primary-500 bg-white dark:bg-gray-900 border-primary-500'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700'
+                }`}
+              onClick={() => setActiveSection(section.id)}
+            >
+              <Icon size={18} />
+              <span>{section.label}</span>
+            </button>
+          )
+        })}
       </div>
 
       {/* Контент разделов */}
-      <div className="settings-content">
+      <div className="p-6 min-h-96">
         {activeSection === 'tokens' && (
-          <div className="settings-section">
-            <div className="section-header">
-              <Key size={20} />
-              <h3>Управление токенами</h3>
-              <p>Добавляйте, редактируйте и управляйте токенами Яндекс.Музыки</p>
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
+              <Key size={20} className="text-primary-500" />
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Управление токенами</h3>
+                <p className="text-gray-600 dark:text-gray-400">Добавляйте, редактируйте и управляйте токенами Яндекс.Музыки</p>
+              </div>
             </div>
             <TokenManager onTokenChange={handleTokenChange} />
-            <div className="help-section">
-              <button
+            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+              <Button
+                variant="secondary"
                 onClick={() => setIsTokenHelperOpen(true)}
-                className="help-button"
+                icon={HelpCircle}
               >
-                <HelpCircle size={16} />
                 Как получить токен?
-              </button>
+              </Button>
             </div>
           </div>
         )}
 
         {activeSection === 'download' && (
-          <div className="settings-section">
-            <div className="section-header">
-              <Download size={20} />
-              <h3>Настройки загрузки</h3>
-              <p>Настройте путь сохранения и качество аудио</p>
-            </div>
-
-            <div className="form-group">
-              <label>
-                <FolderOpen size={16} />
-                Путь для сохранения
-              </label>
-              <div className="path-input-group">
-                <input
-                  type="text"
-                  value={downloadPath}
-                  onChange={(e) => setDownloadPath(e.target.value)}
-                  placeholder="/path/to/music"
-                />
-                <button
-                  className="folder-button"
-                  onClick={() => console.log('Выбор папки')}
-                  title="Выбрать папку"
-                >
-                  <FolderOpen size={18} />
-                </button>
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
+              <Download size={20} className="text-primary-500" />
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Настройки загрузки</h3>
+                <p className="text-gray-600 dark:text-gray-400">Настройте путь сохранения и качество аудио</p>
               </div>
             </div>
 
-            <div className="form-group">
-              <label>
-                <Palette size={16} />
-                Качество аудио
-              </label>
-              <select
-                value={quality}
-                onChange={(e) => setQuality(e.target.value)}
-                className="quality-select"
-              >
-                <option value="lossless">Lossless (FLAC 24-bit/96kHz)</option>
-                <option value="high">Высокое (FLAC 16-bit/44.1kHz)</option>
-                <option value="medium">Среднее (320 kbps MP3)</option>
-                <option value="low">Стандартное (256 kbps AAC)</option>
-              </select>
-              <div className="help-text">
-                <strong>Рекомендуется:</strong> Lossless для аудиофильского оборудования
+            <div className="space-y-4">
+              <div>
+                <label className="flex items-center gap-2 mb-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                  <FolderOpen size={16} />
+                  Путь для сохранения
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={downloadPath}
+                    onChange={(e) => setDownloadPath(e.target.value)}
+                    placeholder="/path/to/music"
+                    className="flex-1 input-field"
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={() => console.log('Выбор папки')}
+                    icon={FolderOpen}
+                    className="px-3"
+                  >
+                    Выбрать
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 mb-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                  <Palette size={16} />
+                  Качество аудио
+                </label>
+                <select
+                  value={quality}
+                  onChange={(e) => setQuality(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="lossless">Lossless (FLAC 24-bit/96kHz)</option>
+                  <option value="high">Высокое (FLAC 16-bit/44.1kHz)</option>
+                  <option value="medium">Среднее (320 kbps MP3)</option>
+                  <option value="low">Стандартное (256 kbps AAC)</option>
+                </select>
+                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                  <strong className="text-gray-900 dark:text-gray-100">Рекомендуется:</strong> Lossless для аудиофильского оборудования
+                </p>
               </div>
             </div>
           </div>
         )}
 
         {activeSection === 'files' && (
-          <div className="settings-section">
-            <div className="section-header">
-              <FileText size={20} />
-              <h3>Структура файлов</h3>
-              <p>Настройте шаблоны имен файлов и папок</p>
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
+              <FileText size={20} className="text-primary-500" />
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Структура файлов</h3>
+                <p className="text-gray-600 dark:text-gray-400">Настройте шаблоны имен файлов и папок</p>
+              </div>
             </div>
 
-            <div className="form-group">
-              <label>Шаблон имени файла</label>
-              <input
-                type="text"
+            <div className="space-y-4">
+              <Input
+                label="Шаблон имени файла"
                 value={fileTemplate}
-                onChange={(e) => setFileTemplate(e.target.value)}
+                onChange={setFileTemplate}
                 placeholder="{artist} - {title}"
-                className="template-input"
+                helpText="Доступные переменные: {artist}, {title}, {album}, {year}, {track}"
+                className="font-mono text-sm"
               />
-              <div className="help-text">
-                <strong>Доступные переменные:</strong> {'{artist}'}, {'{title}'}, {'{album}'}, {'{year}'}, {'{track}'}
-              </div>
-            </div>
 
-            <div className="form-group">
-              <label>Структура папок</label>
-              <input
-                type="text"
+              <Input
+                label="Структура папок"
                 value={folderStructure}
-                onChange={(e) => setFolderStructure(e.target.value)}
+                onChange={setFolderStructure}
                 placeholder="{artist}/{album}"
-                className="template-input"
+                helpText="Создавать подпапки по исполнителю и альбому"
+                className="font-mono text-sm"
               />
-              <div className="help-text">
-                Создавать подпапки по исполнителю и альбому
-              </div>
             </div>
           </div>
         )}
 
         {activeSection === 'sync' && (
-          <div className="settings-section">
-            <div className="section-header">
-              <Clock size={20} />
-              <h3>Автоматическая синхронизация</h3>
-              <p>Настройте автоматическое обновление плейлистов</p>
+          <div className="space-y-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
+              <Clock size={20} className="text-primary-500" />
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Автоматическая синхронизация</h3>
+                <p className="text-gray-600 dark:text-gray-400">Настройте автоматическое обновление плейлистов</p>
+              </div>
             </div>
 
-            <div className="form-group checkbox-group">
-              <label className="checkbox-label">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <input
                   type="checkbox"
                   checked={autoSync}
                   onChange={(e) => setAutoSync(e.target.checked)}
+                  className="w-5 h-5 text-primary-500 bg-gray-100 border-gray-300 rounded focus:ring-primary-500 focus:ring-2"
                 />
-                <span>Включить автоматическую синхронизацию</span>
-              </label>
-            </div>
-
-            {autoSync && (
-              <div className="form-group">
-                <label>
-                  <Clock size={16} />
-                  Интервал синхронизации
+                <label className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  Включить автоматическую синхронизацию
                 </label>
-                <div className="sync-interval-group">
-                  <input
-                    type="number"
-                    min="1"
-                    max="168"
-                    value={syncInterval}
-                    onChange={(e) => setSyncInterval(parseInt(e.target.value))}
-                    className="interval-input"
-                  />
-                  <span className="interval-label">часов</span>
-                </div>
-                <div className="help-text">
-                  Минимум: 1 час, максимум: 168 часов (1 неделя)
-                </div>
               </div>
-            )}
+
+              {autoSync && (
+                <div>
+                  <label className="flex items-center gap-2 mb-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                    <Clock size={16} />
+                    Интервал синхронизации
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min="1"
+                      max="168"
+                      value={syncInterval}
+                      onChange={(e) => setSyncInterval(parseInt(e.target.value))}
+                      className="w-24 text-center input-field"
+                    />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">часов</span>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                    Минимум: 1 час, максимум: 168 часов (1 неделя)
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
 
       {/* Кнопки действий */}
-      <div className="settings-actions">
-        <button
+      <div className="flex justify-end p-6 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+        <Button
+          variant="success"
           onClick={saveSettings}
-          className="save-button"
           disabled={isSaving}
+          loading={isSaving}
+          icon={Save}
         >
-          <Save size={18} />
           {isSaving ? 'Сохранение...' : 'Сохранить настройки'}
-        </button>
+        </Button>
       </div>
 
       {/* Модальное окно помощи */}
@@ -359,9 +359,8 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
         onClose={() => setIsTokenHelperOpen(false)}
         onTokenReceived={handleTokenReceived}
       />
-    </div>
+    </Card>
   )
 }
 
 export default SettingsPanel
-

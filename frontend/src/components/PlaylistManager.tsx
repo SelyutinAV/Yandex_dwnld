@@ -1,6 +1,7 @@
 import { CheckCircle, Download, Music, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import './PlaylistManager.css'
+import { Button } from './ui/Button'
+import { Card } from './ui/Card'
 
 interface Playlist {
   id: string
@@ -114,74 +115,89 @@ function PlaylistManager() {
   }
 
   return (
-    <div className="playlist-manager">
-      <div className="manager-header">
-        <h2>Мои плейлисты</h2>
-        <div className="header-actions">
-          <button onClick={loadPlaylists} disabled={loading}>
-            <RefreshCw size={18} className={loading ? 'spin' : ''} />
+    <div className="w-full">
+      <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
+        <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Мои плейлисты</h2>
+        <div className="flex gap-4">
+          <Button
+            variant="secondary"
+            onClick={loadPlaylists}
+            disabled={loading}
+            icon={RefreshCw}
+            loading={loading}
+          >
             Обновить
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             onClick={syncSelectedPlaylists}
             disabled={selectedPlaylists.size === 0}
-            className="primary"
+            icon={Download}
           >
-            <Download size={18} />
             Синхронизировать ({selectedPlaylists.size})
-          </button>
+          </Button>
         </div>
       </div>
 
       {loading && playlists.length === 0 ? (
-        <div className="loading-state">
-          <RefreshCw size={48} className="spin" />
+        <Card className="flex flex-col items-center justify-center py-16 text-gray-500 dark:text-gray-400">
+          <RefreshCw size={48} className="animate-spin mb-4" />
           <p>Загрузка плейлистов...</p>
-        </div>
+        </Card>
       ) : (
-        <div className="playlist-grid">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {playlists.map(playlist => (
-            <div
+            <Card
               key={playlist.id}
-              className={`playlist-card ${selectedPlaylists.has(playlist.id) ? 'selected' : ''}`}
+              className={`cursor-pointer transition-all duration-200 hover:shadow-soft-lg hover:-translate-y-1 ${selectedPlaylists.has(playlist.id)
+                  ? 'ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                  : 'hover:ring-2 hover:ring-primary-200 dark:hover:ring-primary-800'
+                }`}
               onClick={() => togglePlaylistSelection(playlist.id)}
             >
-              <div className="playlist-cover">
+              <div className="relative w-full aspect-square bg-gradient-to-br from-gray-400 to-gray-600 dark:from-gray-600 dark:to-gray-800 rounded-lg overflow-hidden mb-4">
                 {playlist.cover ? (
-                  <img src={playlist.cover} alt={playlist.title} />
+                  <img
+                    src={playlist.cover}
+                    alt={playlist.title}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
-                  <div className="cover-placeholder">
+                  <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
                     <Music size={48} />
                   </div>
                 )}
                 {playlist.isSynced && (
-                  <div className="sync-badge">
+                  <div className="absolute top-2 right-2 bg-success-500 text-white p-1 rounded-full">
                     <CheckCircle size={16} />
                   </div>
                 )}
               </div>
-              <div className="playlist-info">
-                <h3>{playlist.title}</h3>
-                <p className="track-count">{playlist.trackCount} треков</p>
-                <p className="last-sync">
+              <div className="space-y-2">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate">
+                  {playlist.title}
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {playlist.trackCount} треков
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-500">
                   Последняя синхронизация: {formatDate(playlist.lastSync)}
                 </p>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
 
       {!loading && playlists.length === 0 && (
-        <div className="empty-state">
-          <Music size={64} />
-          <h3>Плейлисты не найдены</h3>
+        <Card className="flex flex-col items-center justify-center py-16 text-gray-500 dark:text-gray-400">
+          <Music size={64} className="mb-4" />
+          <h3 className="text-xl font-semibold mb-2">Плейлисты не найдены</h3>
           <p>Подключитесь к Яндекс.Музыке в настройках</p>
-        </div>
+        </Card>
       )}
     </div>
   )
 }
 
 export default PlaylistManager
-
