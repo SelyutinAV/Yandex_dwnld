@@ -70,3 +70,7 @@ logs/
 # Temporary documentation files
 *_DESIGN.md
 *_FEATURES.md
+CURSOR_SETUP.md
+CURSOR_SETUP_COMPLETE.md
+OPTIMIZATION.md
+RECOVERY_GUIDE.md

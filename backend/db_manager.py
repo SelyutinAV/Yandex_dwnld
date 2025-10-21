@@ -161,6 +161,21 @@ class DatabaseManager:
             
             conn.commit()
             return cursor.rowcount > 0
+    
+    def deactivate_token(self, token_id: int) -> bool:
+        """Деактивировать токен"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Деактивируем конкретный токен
+            cursor.execute("""
+                UPDATE saved_tokens 
+                SET is_active = 0
+                WHERE id = ?
+            """, (token_id,))
+            
+            conn.commit()
+            return cursor.rowcount > 0
 
     def rename_token(self, token_id: int, new_name: str) -> bool:
         """Переименовать токен"""

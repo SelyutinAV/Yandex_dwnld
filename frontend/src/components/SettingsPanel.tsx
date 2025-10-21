@@ -15,9 +15,7 @@ import { useEffect, useState } from 'react'
 import TokenHelper from './TokenHelper'
 import TokenManager from './TokenManager'
 import { Button } from './ui/Button'
-import { Card } from './ui/Card'
 import { Input } from './ui/Input'
-import { StatusBadge } from './ui/StatusBadge'
 
 interface SettingsPanelProps {
   onConnectionChange: (connected: boolean) => void
@@ -25,7 +23,7 @@ interface SettingsPanelProps {
 
 function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   // Состояние для настроек
-  const [downloadPath, setDownloadPath] = useState('/home/user/Music/Yandex')
+  const [downloadPath, setDownloadPath] = useState('/home/urch/Music/Yandex')
   const [quality, setQuality] = useState('lossless')
   const [autoSync, setAutoSync] = useState(false)
   const [syncInterval, setSyncInterval] = useState(24)
@@ -52,7 +50,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
       const response = await fetch('http://localhost:8000/api/settings')
       if (response.ok) {
         const settings = await response.json()
-        setDownloadPath(settings.downloadPath || '/home/user/Music/Yandex')
+        setDownloadPath(settings.downloadPath || '/home/urch/Music/Yandex')
         setQuality(settings.quality || 'lossless')
         setAutoSync(settings.autoSync || false)
         setSyncInterval(settings.syncInterval || 24)
@@ -76,16 +74,22 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   // Показываем индикатор загрузки
   if (isLoading) {
     return (
-      <Card className="max-w-4xl mx-auto">
-        <div className="flex items-center gap-3 p-6 bg-gradient-to-r from-primary-500 to-secondary-500 text-white rounded-t-xl">
-          <SettingsIcon size={24} />
-          <h2 className="text-2xl font-semibold">Настройки</h2>
+      <div className="flex max-w-7xl mx-auto bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden min-h-[600px]">
+        <div className="w-64 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
+          <div className="p-6 bg-gradient-to-br from-primary-500 to-secondary-500 text-white">
+            <div className="flex items-center gap-3 mb-2">
+              <SettingsIcon size={24} />
+              <h2 className="text-xl font-semibold">Настройки</h2>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400">
-          <div className="animate-spin rounded-full h-10 w-10 border-3 border-gray-300 border-t-primary-500 mb-4"></div>
-          <p>Загрузка настроек...</p>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-10 w-10 border-3 border-gray-300 border-t-primary-500"></div>
+            <p className="text-gray-500 dark:text-gray-400">Загрузка настроек...</p>
+          </div>
         </div>
-      </Card>
+      </div>
     )
   }
 
@@ -134,223 +138,239 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   }
 
   const navSections = [
-    { id: 'tokens', label: 'Токены', icon: Key },
-    { id: 'download', label: 'Загрузка', icon: Download },
-    { id: 'files', label: 'Файлы', icon: FileText },
-    { id: 'sync', label: 'Синхронизация', icon: Clock }
+    { id: 'tokens', label: 'Токены', icon: Key, description: 'Управление токенами' },
+    { id: 'download', label: 'Загрузка', icon: Download, description: 'Настройки загрузки' },
+    { id: 'files', label: 'Файлы', icon: FileText, description: 'Структура файлов' },
+    { id: 'sync', label: 'Синхронизация', icon: Clock, description: 'Автосинхронизация' }
   ] as const
 
+  const currentSection = navSections.find(section => section.id === activeSection)
+
   return (
-    <Card className="max-w-4xl mx-auto overflow-hidden">
-      {/* Заголовок */}
-      <div className="flex items-center justify-between p-6 bg-gradient-to-r from-primary-500 to-secondary-500 text-white">
-        <div className="flex items-center gap-3">
-          <SettingsIcon size={24} />
-          <h2 className="text-2xl font-semibold">Настройки</h2>
-        </div>
-        <StatusBadge
-          status={isConnected ? 'connected' : 'disconnected'}
-          icon={isConnected ? Wifi : WifiOff}
-        >
-          {isConnected ? 'Подключено' : 'Не подключено'}
-        </StatusBadge>
-      </div>
-
-      {/* Навигация по разделам */}
-      <div className="flex bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-        {navSections.map((section) => {
-          const Icon = section.icon
-          return (
-            <button
-              key={section.id}
-              className={`flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap transition-all duration-200 border-b-3 border-transparent ${activeSection === section.id
-                  ? 'text-primary-500 bg-white dark:bg-gray-900 border-primary-500'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-              onClick={() => setActiveSection(section.id)}
-            >
-              <Icon size={18} />
-              <span>{section.label}</span>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Контент разделов */}
-      <div className="p-6 min-h-96">
-        {activeSection === 'tokens' && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
-              <Key size={20} className="text-primary-500" />
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Управление токенами</h3>
-                <p className="text-gray-600 dark:text-gray-400">Добавляйте, редактируйте и управляйте токенами Яндекс.Музыки</p>
+    <div className="flex max-w-7xl mx-auto bg-white dark:bg-gray-900 rounded-xl shadow-lg overflow-hidden min-h-[600px]">
+      {/* Боковая навигация */}
+      <div className="w-64 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+        {/* Заголовок */}
+        <div className="p-6 bg-gradient-to-br from-primary-500 to-secondary-500 text-white">
+          <div className="flex items-center gap-3 mb-2">
+            <SettingsIcon size={24} />
+            <h2 className="text-xl font-semibold">Настройки</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            {isConnected ? (
+              <div className="flex items-center gap-2 px-2 py-1 bg-green-500 text-white rounded-full text-xs font-medium">
+                <Wifi size={12} />
+                <span>Подключено</span>
               </div>
-            </div>
-            <TokenManager onTokenChange={handleTokenChange} />
-            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-              <Button
-                variant="secondary"
-                onClick={() => setIsTokenHelperOpen(true)}
-                icon={HelpCircle}
+            ) : (
+              <div className="flex items-center gap-2 px-2 py-1 bg-red-500 text-white rounded-full text-xs font-medium">
+                <WifiOff size={12} />
+                <span>Не подключено</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Навигационное меню */}
+        <nav className="flex-1 p-4 space-y-2">
+          {navSections.map((section) => {
+            const Icon = section.icon
+            return (
+              <button
+                key={section.id}
+                className={`w-full flex flex-col items-start gap-1 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeSection === section.id
+                  ? 'bg-primary-500 text-white shadow-md'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }`}
+                onClick={() => setActiveSection(section.id as typeof activeSection)}
               >
-                Как получить токен?
-              </Button>
+                <div className="flex items-center gap-3">
+                  <Icon size={18} />
+                  <span>{section.label}</span>
+                </div>
+                <span className={`text-xs ml-6 ${activeSection === section.id ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {section.description}
+                </span>
+              </button>
+            )
+          })}
+        </nav>
+
+        {/* Нижняя часть боковой панели */}
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+          <Button
+            variant="success"
+            onClick={saveSettings}
+            disabled={isSaving}
+            loading={isSaving}
+            icon={Save}
+            className="w-full shadow-md hover:shadow-lg bg-green-500 hover:bg-green-600"
+          >
+            {isSaving ? 'Сохранение...' : 'Сохранить'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Основной контент */}
+      <div className="flex-1 flex flex-col">
+        {/* Заголовок раздела */}
+        <div className="p-6 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <div className="flex items-center gap-3">
+            {currentSection && <currentSection.icon size={24} className="text-primary-500" />}
+            <div>
+              <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+                {currentSection?.label}
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mt-1">
+                {currentSection?.description}
+              </p>
             </div>
           </div>
-        )}
+        </div>
 
-        {activeSection === 'download' && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
-              <Download size={20} className="text-primary-500" />
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Настройки загрузки</h3>
-                <p className="text-gray-600 dark:text-gray-400">Настройте путь сохранения и качество аудио</p>
+        {/* Контент раздела */}
+        <div className="flex-1 p-6 overflow-y-auto">
+          {activeSection === 'tokens' && (
+            <div className="space-y-6">
+              <TokenManager onTokenChange={handleTokenChange} />
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                <Button
+                  variant="secondary"
+                  onClick={() => setIsTokenHelperOpen(true)}
+                  icon={HelpCircle}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700"
+                >
+                  ? Как получить токен?
+                </Button>
               </div>
             </div>
+          )}
 
-            <div className="space-y-4">
-              <div>
-                <label className="flex items-center gap-2 mb-2 text-sm font-medium text-gray-900 dark:text-gray-100">
-                  <FolderOpen size={16} />
-                  Путь для сохранения
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={downloadPath}
-                    onChange={(e) => setDownloadPath(e.target.value)}
-                    placeholder="/path/to/music"
-                    className="flex-1 input-field"
-                  />
-                  <Button
-                    variant="secondary"
-                    onClick={() => console.log('Выбор папки')}
-                    icon={FolderOpen}
-                    className="px-3"
-                  >
-                    Выбрать
-                  </Button>
+          {activeSection === 'download' && (
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <FolderOpen size={20} className="text-primary-500" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Путь для сохранения</h4>
                 </div>
+                <Input
+                  label="Путь для сохранения"
+                  value={downloadPath}
+                  onChange={setDownloadPath}
+                  placeholder="/path/to/music"
+                />
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Укажите папку, куда будут сохраняться загруженные файлы
+                </p>
               </div>
 
-              <div>
-                <label className="flex items-center gap-2 mb-2 text-sm font-medium text-gray-900 dark:text-gray-100">
-                  <Palette size={16} />
-                  Качество аудио
-                </label>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Palette size={20} className="text-primary-500" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Качество аудио</h4>
+                </div>
                 <select
                   value={quality}
                   onChange={(e) => setQuality(e.target.value)}
-                  className="input-field"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
                   <option value="lossless">Lossless (FLAC 24-bit/96kHz)</option>
                   <option value="high">Высокое (FLAC 16-bit/44.1kHz)</option>
                   <option value="medium">Среднее (320 kbps MP3)</option>
                   <option value="low">Стандартное (256 kbps AAC)</option>
                 </select>
-                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                  <strong className="text-gray-900 dark:text-gray-100">Рекомендуется:</strong> Lossless для аудиофильского оборудования
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <strong>Рекомендуется:</strong> Lossless для аудиофильского оборудования
                 </p>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {activeSection === 'files' && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
-              <FileText size={20} className="text-primary-500" />
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Структура файлов</h3>
-                <p className="text-gray-600 dark:text-gray-400">Настройте шаблоны имен файлов и папок</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <Input
-                label="Шаблон имени файла"
-                value={fileTemplate}
-                onChange={setFileTemplate}
-                placeholder="{artist} - {title}"
-                helpText="Доступные переменные: {artist}, {title}, {album}, {year}, {track}"
-                className="font-mono text-sm"
-              />
-
-              <Input
-                label="Структура папок"
-                value={folderStructure}
-                onChange={setFolderStructure}
-                placeholder="{artist}/{album}"
-                helpText="Создавать подпапки по исполнителю и альбому"
-                className="font-mono text-sm"
-              />
-            </div>
-          </div>
-        )}
-
-        {activeSection === 'sync' && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
-              <Clock size={20} className="text-primary-500" />
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Автоматическая синхронизация</h3>
-                <p className="text-gray-600 dark:text-gray-400">Настройте автоматическое обновление плейлистов</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <input
-                  type="checkbox"
-                  checked={autoSync}
-                  onChange={(e) => setAutoSync(e.target.checked)}
-                  className="w-5 h-5 text-primary-500 bg-gray-100 border-gray-300 rounded focus:ring-primary-500 focus:ring-2"
-                />
-                <label className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  Включить автоматическую синхронизацию
-                </label>
-              </div>
-
-              {autoSync && (
-                <div>
-                  <label className="flex items-center gap-2 mb-2 text-sm font-medium text-gray-900 dark:text-gray-100">
-                    <Clock size={16} />
-                    Интервал синхронизации
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      min="1"
-                      max="168"
-                      value={syncInterval}
-                      onChange={(e) => setSyncInterval(parseInt(e.target.value))}
-                      className="w-24 text-center input-field"
-                    />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">часов</span>
-                  </div>
-                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                    Минимум: 1 час, максимум: 168 часов (1 неделя)
-                  </p>
+          {activeSection === 'files' && (
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <FileText size={20} className="text-primary-500" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Шаблон имени файла</h4>
                 </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+                <Input
+                  label="Шаблон имени файла"
+                  value={fileTemplate}
+                  onChange={setFileTemplate}
+                  placeholder="{artist} - {title}"
+                />
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  <strong>Доступные переменные:</strong> {'{artist}'}, {'{title}'}, {'{album}'}, {'{year}'}, {'{track}'}
+                </p>
+              </div>
 
-      {/* Кнопки действий */}
-      <div className="flex justify-end p-6 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
-        <Button
-          variant="success"
-          onClick={saveSettings}
-          disabled={isSaving}
-          loading={isSaving}
-          icon={Save}
-        >
-          {isSaving ? 'Сохранение...' : 'Сохранить настройки'}
-        </Button>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <FolderOpen size={20} className="text-primary-500" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Структура папок</h4>
+                </div>
+                <Input
+                  label="Структура папок"
+                  value={folderStructure}
+                  onChange={setFolderStructure}
+                  placeholder="{artist}/{album}"
+                />
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Создавать подпапки по исполнителю и альбому
+                </p>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'sync' && (
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Clock size={20} className="text-primary-500" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Автоматическая синхронизация</h4>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="autoSync"
+                    checked={autoSync}
+                    onChange={(e) => setAutoSync(e.target.checked)}
+                    className="w-4 h-4 text-primary-500 bg-gray-100 border-gray-300 rounded focus:ring-primary-500 focus:ring-2"
+                  />
+                  <label htmlFor="autoSync" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    Включить автоматическую синхронизацию
+                  </label>
+                </div>
+
+                {autoSync && (
+                  <div className="space-y-4 pl-7">
+                    <div className="flex items-center gap-3">
+                      <Clock size={16} className="text-primary-500" />
+                      <label className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        Интервал синхронизации
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min="1"
+                        max="168"
+                        value={syncInterval}
+                        onChange={(e) => setSyncInterval(parseInt(e.target.value))}
+                        className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      />
+                      <span className="text-sm text-gray-600 dark:text-gray-400">часов</span>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Минимум: 1 час, максимум: 168 часов (1 неделя)
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Модальное окно помощи */}
@@ -359,7 +379,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
         onClose={() => setIsTokenHelperOpen(false)}
         onTokenReceived={handleTokenReceived}
       />
-    </Card>
+    </div>
   )
 }
 

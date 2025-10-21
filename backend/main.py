@@ -289,6 +289,23 @@ async def activate_token_endpoint(request: ActivateTokenRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/tokens/deactivate")
+async def deactivate_token_endpoint(request: ActivateTokenRequest):
+    """Деактивировать токен"""
+    try:
+        success = db_manager.deactivate_token(request.token_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Токен не найден")
+        
+        # Обновляем клиент
+        update_yandex_client()
+        
+        return {"status": "success", "message": "Токен деактивирован"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/api/tokens/{token_id}")
 async def delete_token_endpoint(token_id: int):
     """Удалить токен"""
