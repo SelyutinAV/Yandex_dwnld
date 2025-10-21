@@ -561,6 +561,68 @@ async def check_folder_exists(path: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/files/stats")
+async def get_files_stats():
+    """Получить статистику файлов из базы данных"""
+    try:
+        stats = db_manager.get_file_statistics()
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/files/recent")
+async def get_recent_files(limit: int = 10):
+    """Получить список недавно загруженных файлов"""
+    try:
+        recent_files = db_manager.get_recent_downloaded_tracks(limit)
+        return {"files": recent_files}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/files/list")
+async def get_files_list(playlist_id: str = None, limit: int = 100, offset: int = 0):
+    """Получить список загруженных файлов"""
+    try:
+        files = db_manager.get_downloaded_tracks(playlist_id, limit, offset)
+        return {"files": files}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/downloads/queue")
+async def get_download_queue():
+    """Получить очередь загрузок из базы данных"""
+    try:
+        queue = db_manager.get_download_queue()
+        return {"queue": queue}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/downloads/{track_id}/retry")
+async def retry_download(track_id: str):
+    """Повторить загрузку трека"""
+    try:
+        success = db_manager.retry_download(track_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Трек не найден в очереди")
+        return {"status": "success", "message": "Загрузка поставлена в очередь"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/downloads/{track_id}")
+async def cancel_download(track_id: str):
+    """Отменить загрузку трека"""
+    try:
+        success = db_manager.cancel_download(track_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Трек не найден в очереди")
+        return {"status": "success", "message": "Загрузка отменена"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

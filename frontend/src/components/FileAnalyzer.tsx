@@ -1,5 +1,5 @@
 import { FileAudio, FolderOpen, HardDrive, Music, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 
@@ -11,71 +11,71 @@ interface FileStats {
 }
 
 interface AudioFile {
-  path: string
+  track_id: string
   title: string
   artist: string
-  format: string
-  bitrate: string
-  sampleRate: string
-  size: number
+  album?: string
+  file_path: string
+  file_size?: number
+  format?: string
+  quality?: string
+  download_date: string
 }
 
 function FileAnalyzer() {
   const [loading, setLoading] = useState(false)
   const [downloadPath, setDownloadPath] = useState('/home/user/Music/Yandex')
   const [stats, setStats] = useState<FileStats>({
-    totalFiles: 342,
-    totalSize: 28.7 * 1024, // в МБ
-    byFormat: {
-      'FLAC': { count: 256, size: 22.3 * 1024 },
-      'MP3': { count: 68, size: 4.2 * 1024 },
-      'AAC': { count: 18, size: 2.2 * 1024 }
-    },
-    byQuality: {
-      '24-bit/96kHz': 128,
-      '24-bit/48kHz': 98,
-      '16-bit/44.1kHz': 30,
-      '320 kbps': 68,
-      '256 kbps': 18
-    }
+    totalFiles: 0,
+    totalSize: 0,
+    byFormat: {},
+    byQuality: {}
   })
+  const [recentFiles, setRecentFiles] = useState<AudioFile[]>([])
 
-  const [recentFiles] = useState<AudioFile[]>([
-    {
-      path: '/home/user/Music/Yandex/Queen/Bohemian Rhapsody.flac',
-      title: 'Bohemian Rhapsody',
-      artist: 'Queen',
-      format: 'FLAC',
-      bitrate: '24-bit',
-      sampleRate: '96kHz',
-      size: 87.3
-    },
-    {
-      path: '/home/user/Music/Yandex/Eagles/Hotel California.flac',
-      title: 'Hotel California',
-      artist: 'Eagles',
-      format: 'FLAC',
-      bitrate: '24-bit',
-      sampleRate: '96kHz',
-      size: 92.1
-    }
-  ])
+  // Загружаем данные при монтировании компонента
+  useEffect(() => {
+    loadData()
+    loadSettings()
+  }, [])
 
-  const analyzeFiles = async () => {
-    setLoading(true)
+  const loadSettings = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/files/stats')
+      const response = await fetch('http://localhost:8000/api/settings')
       if (response.ok) {
-        const data = await response.json()
-        setStats(data)
-      } else {
-        console.error('Ошибка получения статистики файлов')
+        const settings = await response.json()
+        setDownloadPath(settings.downloadPath || '/home/user/Music/Yandex')
       }
     } catch (error) {
-      console.error('Ошибка анализа файлов:', error)
+      console.error('Ошибка загрузки настроек:', error)
+    }
+  }
+
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      // Загружаем статистику файлов
+      const statsResponse = await fetch('http://localhost:8000/api/files/stats')
+      if (statsResponse.ok) {
+        const statsData = await statsResponse.json()
+        setStats(statsData)
+      }
+
+      // Загружаем недавние файлы
+      const recentResponse = await fetch('http://localhost:8000/api/files/recent?limit=5')
+      if (recentResponse.ok) {
+        const recentData = await recentResponse.json()
+        setRecentFiles(recentData.files || [])
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки данных:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  const analyzeFiles = async () => {
+    await loadData()
   }
 
   const formatSize = (mb: number) => {
@@ -88,6 +88,21 @@ function FileAnalyzer() {
   const selectFolder = () => {
     // TODO: Открыть диалог выбора папки
     console.log('Выбор папки')
+  }
+
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString)
+      return date.toLocaleDateString('ru-RU', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    } catch {
+      return dateString
+    }
   }
 
   return (
@@ -116,6 +131,7 @@ function FileAnalyzer() {
             onChange={(e) => setDownloadPath(e.target.value)}
             placeholder="/path/to/music"
             className="flex-1 input-field"
+            disabled
           />
           <Button
             variant="secondary"
@@ -125,6 +141,9 @@ function FileAnalyzer() {
             Выбрать
           </Button>
         </div>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+          Путь настраивается в разделе "Настройки" → "Загрузка"
+        </p>
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -160,72 +179,100 @@ function FileAnalyzer() {
             <div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Средний размер</div>
               <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                {formatSize(stats.totalSize / stats.totalFiles)}
+                {stats.totalFiles > 0 ? formatSize(stats.totalSize / stats.totalFiles) : '0 МБ'}
               </div>
             </div>
           </div>
         </Card>
       </div>
 
-      <Card className="p-6">
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Распределение по форматам</h3>
-        <div className="space-y-4">
-          {Object.entries(stats.byFormat).map(([format, data]) => (
-            <div key={format} className="space-y-2">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <span className="font-medium text-gray-900 dark:text-gray-100">{format}</span>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">{data.count} файлов</span>
+      {stats.totalFiles > 0 ? (
+        <>
+          <Card className="p-6">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Распределение по форматам</h3>
+            <div className="space-y-4">
+              {Object.entries(stats.byFormat).map(([format, data]) => (
+                <div key={format} className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium text-gray-900 dark:text-gray-100">{format}</span>
+                      <span className="text-sm text-gray-600 dark:text-gray-400">{data.count} файлов</span>
+                    </div>
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {formatSize(data.size)}
+                    </div>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div
+                      className="bg-gradient-to-r from-primary-500 to-secondary-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(data.count / stats.totalFiles) * 100}%` }}
+                    ></div>
+                  </div>
                 </div>
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  {formatSize(data.size)}
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-6">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Качество аудио</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.entries(stats.byQuality).map(([quality, count]) => (
+                <div key={quality} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <div className="font-medium text-gray-900 dark:text-gray-100">{quality}</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">{count} файлов</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </>
+      ) : (
+        <Card className="p-6">
+          <div className="text-center py-8">
+            <FileAudio size={64} className="mx-auto text-gray-400 mb-4" />
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Файлы не найдены</h3>
+            <p className="text-gray-600 dark:text-gray-400">
+              Загрузите музыку из плейлистов, чтобы увидеть статистику файлов
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {recentFiles.length > 0 && (
+        <Card className="p-6">
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Недавно добавленные</h3>
+          <div className="space-y-4">
+            {recentFiles.map((file) => (
+              <div key={file.track_id} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <FileAudio size={24} className="text-primary-500 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{file.title}</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 truncate">{file.artist}</div>
+                  {file.album && (
+                    <div className="text-xs text-gray-500 dark:text-gray-500 truncate">{file.album}</div>
+                  )}
+                  <div className="text-xs text-gray-500 dark:text-gray-500 truncate">{file.file_path}</div>
+                </div>
+                <div className="flex flex-col items-end gap-1 text-sm">
+                  {file.format && (
+                    <span className="px-2 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded text-xs font-medium">
+                      {file.format}
+                    </span>
+                  )}
+                  {file.quality && (
+                    <span className="text-gray-600 dark:text-gray-400">{file.quality}</span>
+                  )}
+                  {file.file_size && (
+                    <span className="text-gray-500 dark:text-gray-500">{formatSize(file.file_size)}</span>
+                  )}
+                  <span className="text-xs text-gray-500 dark:text-gray-500">
+                    {formatDate(file.download_date)}
+                  </span>
                 </div>
               </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-gradient-to-r from-primary-500 to-secondary-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(data.count / stats.totalFiles) * 100}%` }}
-                ></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Card className="p-6">
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Качество аудио</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Object.entries(stats.byQuality).map(([quality, count]) => (
-            <div key={quality} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <div className="font-medium text-gray-900 dark:text-gray-100">{quality}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">{count} файлов</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <Card className="p-6">
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Недавно добавленные</h3>
-        <div className="space-y-4">
-          {recentFiles.map((file, index) => (
-            <div key={index} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <FileAudio size={24} className="text-primary-500 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{file.title}</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400 truncate">{file.artist}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-500 truncate">{file.path}</div>
-              </div>
-              <div className="flex flex-col items-end gap-1 text-sm">
-                <span className="px-2 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded text-xs font-medium">
-                  {file.format}
-                </span>
-                <span className="text-gray-600 dark:text-gray-400">{file.bitrate} / {file.sampleRate}</span>
-                <span className="text-gray-500 dark:text-gray-500">{formatSize(file.size)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
