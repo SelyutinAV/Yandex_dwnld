@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 import asyncio
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Импорт наших модулей
@@ -79,6 +80,8 @@ class Settings(BaseModel):
     quality: str
     autoSync: bool = False
     syncInterval: int = 24
+    fileTemplate: Optional[str] = "{artist} - {title}"
+    folderStructure: Optional[str] = "{artist}/{album}"
 
 class TokenTest(BaseModel):
     token: str
@@ -324,6 +327,12 @@ async def delete_token_endpoint(token_id: int):
 class RenameTokenRequest(BaseModel):
     name: str
 
+class CreateFolderRequest(BaseModel):
+    path: str
+
+class ListFoldersRequest(BaseModel):
+    path: str = "/"
+
 @app.put("/api/tokens/{token_id}/rename")
 async def rename_token_endpoint(token_id: int, request: RenameTokenRequest):
     """Переименовать токен"""
@@ -434,6 +443,12 @@ async def save_settings(settings: Settings):
         db_manager.save_setting("auto_sync", str(settings.autoSync))
         db_manager.save_setting("sync_interval", str(settings.syncInterval))
         
+        # Сохраняем дополнительные настройки
+        if settings.fileTemplate:
+            db_manager.save_setting("file_template", settings.fileTemplate)
+        if settings.folderStructure:
+            db_manager.save_setting("folder_structure", settings.folderStructure)
+        
         # Если изменился токен, обновляем клиент
         current_token = db_manager.get_setting("yandex_token", "")
         if settings.token and settings.token != current_token:
@@ -459,9 +474,89 @@ async def get_settings():
         return {
             "token": current_token,
             "downloadPath": db_manager.get_setting("download_path", os.getenv("DOWNLOAD_PATH", "/home/urch/Music/Yandex")),
-            "quality": db_manager.get_setting("quality", os.getenv("DEFAULT_QUALITY", "lossless")),
+            "quality": db_manager.get_setting("quality", os.getenv("DEFAULT_QUALITY", "ultra")),
             "autoSync": db_manager.get_setting("auto_sync", "false").lower() == "true",
-            "syncInterval": int(db_manager.get_setting("sync_interval", "24"))
+            "syncInterval": int(db_manager.get_setting("sync_interval", "24")),
+            "fileTemplate": db_manager.get_setting("file_template", "{artist} - {title}"),
+            "folderStructure": db_manager.get_setting("folder_structure", "{artist}/{album}")
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/folders/create")
+async def create_folder(request: CreateFolderRequest):
+    """Создать папку"""
+    try:
+        folder_path = Path(request.path)
+        
+        # Проверка безопасности - не разрешаем создавать папки вне домашней директории
+        # Раскомментируйте при необходимости
+        # home_dir = Path.home()
+        # if not str(folder_path.resolve()).startswith(str(home_dir)):
+        #     raise HTTPException(status_code=403, detail="Доступ запрещен")
+        
+        # Создаем папку и все родительские папки
+        folder_path.mkdir(parents=True, exist_ok=True)
+        
+        return {
+            "status": "success",
+            "message": f"Папка '{request.path}' успешно создана",
+            "path": str(folder_path.resolve())
+        }
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Недостаточно прав для создания папки")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка создания папки: {str(e)}")
+
+@app.post("/api/folders/list")
+async def list_folders(request: ListFoldersRequest):
+    """Получить список папок в указанной директории"""
+    try:
+        folder_path = Path(request.path)
+        
+        if not folder_path.exists():
+            raise HTTPException(status_code=404, detail="Путь не существует")
+        
+        if not folder_path.is_dir():
+            raise HTTPException(status_code=400, detail="Указанный путь не является директорией")
+        
+        # Получаем только директории
+        folders = []
+        try:
+            for item in folder_path.iterdir():
+                if item.is_dir() and not item.name.startswith('.'):
+                    folders.append({
+                        "name": item.name,
+                        "path": str(item),
+                        "hasChildren": any(item.iterdir()) if item.is_dir() else False
+                    })
+        except PermissionError:
+            # Игнорируем папки без доступа
+            pass
+        
+        # Сортируем по имени
+        folders.sort(key=lambda x: x["name"].lower())
+        
+        return {
+            "path": str(folder_path),
+            "folders": folders
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка чтения директории: {str(e)}")
+
+@app.get("/api/folders/exists")
+async def check_folder_exists(path: str):
+    """Проверить существование папки"""
+    try:
+        folder_path = Path(path)
+        exists = folder_path.exists() and folder_path.is_dir()
+        
+        return {
+            "exists": exists,
+            "path": path,
+            "resolved_path": str(folder_path.resolve()) if exists else None
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
