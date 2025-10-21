@@ -1,0 +1,195 @@
+.settings-panel {
+  max-width: 800px;
+  width: 100%;
+}
+
+.settings-panel h2 {
+  margin-bottom: 2rem;
+}
+
+.settings-section {
+  background: #1a1a1a;
+  padding: 2rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+  border: 1px solid #333;
+}
+
+.settings-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  color: #999;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #ccc;
+}
+
+.form-group input[type="text"],
+.form-group input[type="password"],
+.form-group input[type="number"],
+.form-group select {
+  width: 100%;
+}
+
+.token-input-group,
+.path-input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.token-input-group input {
+  flex: 1;
+}
+
+.test-button {
+  min-width: 120px;
+  background: #667eea;
+  color: white;
+}
+
+.test-button:hover:not(:disabled) {
+  background: #5568d3;
+}
+
+.test-result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.test-result.success {
+  background: rgba(74, 222, 128, 0.1);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.test-result.error {
+  background: rgba(248, 113, 113, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+.help-text {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.help-text a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+.help-text a:hover {
+  text-decoration: underline;
+}
+
+.checkbox-group {
+  display: flex;
+  align-items: center;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  font-weight: 500;
+  margin: 0;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: auto;
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.save-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+}
+
+.save-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+@media (max-width: 768px) {
+  .settings-section {
+    padding: 1.5rem;
+  }
+
+  .token-input-group,
+  .path-input-group {
+    flex-direction: column;
+  }
+
+  .test-button {
+    width: 100%;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .settings-section {
+    background: white;
+    border-color: #e0e0e0;
+  }
+
+  .settings-section h3 {
+    color: #666;
+  }
+
+  .form-group label {
+    color: #333;
+  }
+
+  .test-result.success {
+    background: rgba(74, 222, 128, 0.15);
+    color: #16a34a;
+  }
+
+  .test-result.error {
+    background: rgba(248, 113, 113, 0.15);
+    color: #dc2626;
+  }
+
+  .help-text {
+    color: #999;
+  }
+}
+
