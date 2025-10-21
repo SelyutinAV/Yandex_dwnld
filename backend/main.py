@@ -23,6 +23,12 @@ yandex_client: Optional[YandexMusicClient] = None
 download_manager: Optional[DownloadManager] = None
 db_session = None
 
+# Инициализация БД в синхронном контексте
+try:
+    db_session = init_database()
+except Exception as e:
+    print(f"Ошибка инициализации БД: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Управление жизненным циклом приложения"""
@@ -83,8 +89,7 @@ async def init_app():
     """Инициализация приложения"""
     global yandex_client, download_manager, db_session
     
-    # Инициализация базы данных
-    db_session = init_database()
+    # БД уже инициализирована в синхронном контексте
     
     # Получение токена из переменных окружения
     token = os.getenv("YANDEX_TOKEN")
