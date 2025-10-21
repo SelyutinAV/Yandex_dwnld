@@ -1,4 +1,4 @@
-import { Check, Key, Plus, Save, Trash2, X } from 'lucide-react'
+import { Check, Edit, Key, Plus, Save, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import './TokenManager.css'
 
@@ -23,6 +23,8 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
     const [newTokenName, setNewTokenName] = useState('')
     const [newToken, setNewToken] = useState('')
     const [isSaving, setIsSaving] = useState(false)
+    const [editingTokenId, setEditingTokenId] = useState<number | null>(null)
+    const [editingTokenName, setEditingTokenName] = useState('')
 
     const loadTokens = useCallback(async () => {
         setIsLoading(true)
@@ -129,6 +131,46 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
         }
     }
 
+    const startEditing = (tokenId: number, currentName: string) => {
+        setEditingTokenId(tokenId)
+        setEditingTokenName(currentName)
+    }
+
+    const cancelEditing = () => {
+        setEditingTokenId(null)
+        setEditingTokenName('')
+    }
+
+    const saveRename = async () => {
+        if (!editingTokenId || !editingTokenName.trim()) {
+            return
+        }
+
+        try {
+            const response = await fetch(`http://localhost:8000/api/tokens/${editingTokenId}/rename`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name: editingTokenName.trim()
+                })
+            })
+
+            if (response.ok) {
+                await loadTokens()
+                setEditingTokenId(null)
+                setEditingTokenName('')
+            } else {
+                const error = await response.json()
+                alert(`Ошибка переименования токена: ${error.detail}`)
+            }
+        } catch (error) {
+            console.error('Ошибка переименования токена:', error)
+            alert('Ошибка переименования токена')
+        }
+    }
+
     const getTokenTypeLabel = useCallback((type: string) => {
         return type === 'oauth' ? 'OAuth' : 'Session ID'
     }, [])
@@ -224,7 +266,39 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
                         >
                             <div className="token-info">
                                 <div className="token-header">
-                                    <h4>{token.name}</h4>
+                                    {editingTokenId === token.id ? (
+                                        <div className="edit-name-container">
+                                            <input
+                                                type="text"
+                                                value={editingTokenName}
+                                                onChange={(e) => setEditingTokenName(e.target.value)}
+                                                className="edit-name-input"
+                                                autoFocus
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        saveRename()
+                                                    } else if (e.key === 'Escape') {
+                                                        cancelEditing()
+                                                    }
+                                                }}
+                                            />
+                                            <button
+                                                onClick={saveRename}
+                                                className="save-edit-button"
+                                                disabled={!editingTokenName.trim()}
+                                            >
+                                                <Check size={14} />
+                                            </button>
+                                            <button
+                                                onClick={cancelEditing}
+                                                className="cancel-edit-button"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <h4>{token.name}</h4>
+                                    )}
                                     <div className="token-badges">
                                         <span
                                             className="token-type-badge"
@@ -255,13 +329,24 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
                                     <button
                                         onClick={() => activateToken(token.id)}
                                         className="activate-button"
+                                        title="Активировать токен"
                                     >
                                         Активировать
+                                    </button>
+                                )}
+                                {editingTokenId !== token.id && (
+                                    <button
+                                        onClick={() => startEditing(token.id, token.name)}
+                                        className="edit-button"
+                                        title="Переименовать токен"
+                                    >
+                                        <Edit size={16} />
                                     </button>
                                 )}
                                 <button
                                     onClick={() => deleteToken(token.id)}
                                     className="delete-button"
+                                    title="Удалить токен"
                                 >
                                     <Trash2 size={16} />
                                 </button>

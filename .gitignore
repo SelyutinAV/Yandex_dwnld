@@ -66,3 +66,7 @@ Thumbs.db
 # Logs
 logs/
 *.log
+
+# Temporary documentation files
+*_DESIGN.md
+*_FEATURES.md

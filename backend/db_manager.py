@@ -161,6 +161,15 @@ class DatabaseManager:
             
             conn.commit()
             return cursor.rowcount > 0
+
+    def rename_token(self, token_id: int, new_name: str) -> bool:
+        """Переименовать токен"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("UPDATE saved_tokens SET name = ? WHERE id = ?", (new_name, token_id))
+            conn.commit()
+            return cursor.rowcount > 0
     
     def delete_token(self, token_id: int) -> bool:
         """Удалить токен"""

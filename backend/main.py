@@ -303,6 +303,23 @@ async def delete_token_endpoint(token_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class RenameTokenRequest(BaseModel):
+    name: str
+
+@app.put("/api/tokens/{token_id}/rename")
+async def rename_token_endpoint(token_id: int, request: RenameTokenRequest):
+    """Переименовать токен"""
+    try:
+        success = db_manager.rename_token(token_id, request.name)
+        if not success:
+            raise HTTPException(status_code=404, detail="Токен не найден")
+        
+        return {"status": "success", "message": "Токен переименован"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/playlists", response_model=List[Playlist])
 async def get_playlists():
     """Получить список плейлистов пользователя"""
