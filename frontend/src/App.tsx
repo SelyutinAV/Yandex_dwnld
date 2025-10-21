@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
-import { Music, Settings, Download, RefreshCw, FolderOpen, ListMusic } from 'lucide-react'
+import { Download, FolderOpen, ListMusic, Music, Settings } from 'lucide-react'
+import { useState } from 'react'
 import './App.css'
-import PlaylistManager from './components/PlaylistManager'
 import DownloadQueue from './components/DownloadQueue'
-import SettingsPanel from './components/SettingsPanel'
 import FileAnalyzer from './components/FileAnalyzer'
+import PlaylistManager from './components/PlaylistManager'
+import SettingsPanel from './components/SettingsPanel'
 
 type Tab = 'playlists' | 'downloads' | 'files' | 'settings'
 

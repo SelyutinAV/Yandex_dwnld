@@ -21,29 +21,42 @@ function PlaylistManager() {
     setLoading(true)
     try {
       const response = await fetch('http://localhost:8000/api/playlists')
+
       if (!response.ok) {
+        if (response.status === 400) {
+          const errorData = await response.json()
+          throw new Error(errorData.detail || 'Ошибка подключения к Яндекс.Музыке')
+        }
         throw new Error(`HTTP error! status: ${response.status}`)
       }
+
       const data = await response.json()
+      console.log('Загружено плейлистов:', data.length)
       setPlaylists(data)
     } catch (error) {
       console.error('Ошибка загрузки плейлистов:', error)
-      // Показываем пример данных в случае ошибки
-      setPlaylists([
-        {
-          id: '1',
-          title: 'Любимые треки (демо)',
-          trackCount: 156,
-          isSynced: true,
-          lastSync: '2025-10-20T10:30:00'
-        },
-        {
-          id: '2',
-          title: 'Audiophile Collection (демо)',
-          trackCount: 89,
-          isSynced: false
-        }
-      ])
+
+      // Если ошибка связана с настройками, показываем пустой список
+      if (error instanceof Error && error.message.includes('токен')) {
+        setPlaylists([])
+      } else {
+        // Показываем пример данных только для демонстрации
+        setPlaylists([
+          {
+            id: '1',
+            title: 'Любимые треки (демо)',
+            trackCount: 156,
+            isSynced: true,
+            lastSync: '2025-10-20T10:30:00'
+          },
+          {
+            id: '2',
+            title: 'Audiophile Collection (демо)',
+            trackCount: 89,
+            isSynced: false
+          }
+        ])
+      }
     } finally {
       setLoading(false)
     }

@@ -1,6 +1,8 @@
-import { AlertCircle, CheckCircle, FolderOpen, Key, Save } from 'lucide-react'
-import { useState } from 'react'
+import { AlertCircle, CheckCircle, FolderOpen, HelpCircle, Key, Save } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import './SettingsPanel.css'
+import TokenHelper from './TokenHelper'
+import TokenManager from './TokenManager'
 
 interface SettingsPanelProps {
   onConnectionChange: (connected: boolean) => void
@@ -15,6 +17,51 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const [isConnected, setIsConnected] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isTokenHelperOpen, setIsTokenHelperOpen] = useState(false)
+
+  // Загрузка настроек при монтировании компонента
+  useEffect(() => {
+    loadSettings()
+  }, [])
+
+  const loadSettings = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('http://localhost:8000/api/settings')
+      if (response.ok) {
+        const settings = await response.json()
+        setToken(settings.token || '')
+        setDownloadPath(settings.downloadPath || '/home/user/Music/Yandex')
+        setQuality(settings.quality || 'lossless')
+        setAutoSync(settings.autoSync || false)
+        setSyncInterval(settings.syncInterval?.toString() || '24')
+
+        // Если есть токен, проверяем соединение
+        if (settings.token) {
+          setIsConnected(true)
+          onConnectionChange(true)
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки настроек:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Показываем индикатор загрузки
+  if (isLoading) {
+    return (
+      <div className="settings-panel">
+        <h2>Настройки</h2>
+        <div className="loading-indicator">
+          <div className="spinner"></div>
+          <p>Загрузка настроек...</p>
+        </div>
+      </div>
+    )
+  }
 
   const testConnection = async () => {
     if (!token) {
@@ -56,19 +103,57 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   }
 
   const saveSettings = async () => {
-    // TODO: Сохранить настройки на сервере
-    console.log('Сохранение настроек:', {
-      token,
-      downloadPath,
-      quality,
-      autoSync,
-      syncInterval
-    })
+    try {
+      const response = await fetch('http://localhost:8000/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          token: token,
+          downloadPath: downloadPath,
+          quality: quality,
+          autoSync: autoSync,
+          syncInterval: parseInt(syncInterval)
+        })
+      })
+
+      if (response.ok) {
+        console.log('Настройки сохранены успешно')
+        // Можно добавить уведомление пользователю
+      } else {
+        console.error('Ошибка сохранения настроек')
+      }
+    } catch (error) {
+      console.error('Ошибка сохранения настроек:', error)
+    }
+  }
+
+  const handleTokenReceived = (newToken: string) => {
+    setToken(newToken)
+    setIsConnected(true)
+    onConnectionChange(true)
+    setTestResult('success')
+  }
+
+  const handleTokenChange = (newToken: string) => {
+    setToken(newToken)
+    if (newToken) {
+      setIsConnected(true)
+      onConnectionChange(true)
+      setTestResult('success')
+    } else {
+      setIsConnected(false)
+      onConnectionChange(false)
+      setTestResult(null)
+    }
   }
 
   return (
     <div className="settings-panel">
       <h2>Настройки</h2>
+
+      <TokenManager onTokenChange={handleTokenChange} />
 
       <div className="settings-section">
         <h3>
@@ -110,9 +195,24 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
             </div>
           )}
 
+          {isConnected && !testResult && (
+            <div className="test-result success">
+              <CheckCircle size={16} />
+              Подключение активно
+            </div>
+          )}
+
           <div className="help-text">
+            <button
+              onClick={() => setIsTokenHelperOpen(true)}
+              className="get-token-button"
+            >
+              <HelpCircle size={16} />
+              Получить токен
+            </button>
+            <span className="help-divider">или</span>
             <a href="https://music.yandex.ru/api" target="_blank" rel="noopener noreferrer">
-              Как получить токен?
+              Инструкция вручную
             </a>
           </div>
         </div>
@@ -211,6 +311,12 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
           Сохранить настройки
         </button>
       </div>
+
+      <TokenHelper
+        isOpen={isTokenHelperOpen}
+        onClose={() => setIsTokenHelperOpen(false)}
+        onTokenReceived={handleTokenReceived}
+      />
     </div>
   )
 }

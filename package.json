@@ -1,0 +1,23 @@
+{
+    "name": "yandex-music-downloader",
+    "version": "1.0.0",
+    "description": "Yandex Music Downloader - Full Stack Application",
+    "scripts": {
+        "start": "./cursor_start.sh",
+        "dev": "./cursor_start.sh",
+        "backend": "./run_backend.sh",
+        "frontend": "./run_frontend.sh",
+        "stop": "pkill -f 'python.*main.py' && pkill -f 'uvicorn' && pkill -f 'node.*vite' && pkill -f 'npm.*dev'",
+        "status": "curl -s http://localhost:8000/api/health && echo '' && curl -s -I http://localhost:3000 | head -1"
+    },
+    "keywords": [
+        "yandex",
+        "music",
+        "downloader",
+        "fastapi",
+        "react",
+        "typescript"
+    ],
+    "author": "Your Name",
+    "license": "MIT"
+}

@@ -37,6 +37,7 @@ dist-ssr/
 # IDEs
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
@@ -45,6 +46,8 @@ dist-ssr/
 .env
 .env.local
 .env.*.local
+.cursorrules
+cursor.json
 
 # Database
 *.db

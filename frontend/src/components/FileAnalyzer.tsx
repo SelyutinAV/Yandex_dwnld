@@ -39,7 +39,7 @@ function FileAnalyzer() {
     }
   })
 
-  const [recentFiles, setRecentFiles] = useState<AudioFile[]>([
+  const [recentFiles] = useState<AudioFile[]>([
     {
       path: '/home/user/Music/Yandex/Queen/Bohemian Rhapsody.flac',
       title: 'Bohemian Rhapsody',

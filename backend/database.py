@@ -71,6 +71,19 @@ class Settings(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class SavedToken(Base):
+    """Модель сохраненных токенов"""
+    __tablename__ = 'saved_tokens'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)  # Имя токена (например, "Мой аккаунт")
+    token = Column(String, nullable=False)  # Сам токен
+    token_type = Column(String, nullable=False)  # oauth или session_id
+    is_active = Column(Boolean, default=False)  # Активный токен
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_used = Column(DateTime)
+
+
 # Создание базы данных
 def init_database(db_url: str = None):
     """
@@ -85,6 +98,10 @@ def init_database(db_url: str = None):
     # Используем обычный SQLite для синхронной инициализации
     if 'sqlite:///' not in db_url:
         db_url = 'sqlite:///yandex_music.db'
+    
+    # Убираем aiosqlite из URL если он есть
+    if 'aiosqlite' in db_url:
+        db_url = db_url.replace('aiosqlite', 'sqlite')
     
     engine = create_engine(db_url, echo=False)
     Base.metadata.create_all(engine)
@@ -155,4 +172,95 @@ def get_file_statistics(session):
         stats['byQuality'][quality] += 1
     
     return stats
+
+
+def save_setting(session, key: str, value: str):
+    """Сохранить настройку"""
+    setting = session.query(Settings).filter(Settings.key == key).first()
+    
+    if setting:
+        setting.value = value
+        setting.updated_at = datetime.utcnow()
+    else:
+        setting = Settings(key=key, value=value)
+        session.add(setting)
+    
+    session.commit()
+    return setting
+
+
+def get_setting(session, key: str, default: str = None) -> str:
+    """Получить настройку"""
+    setting = session.query(Settings).filter(Settings.key == key).first()
+    return setting.value if setting else default
+
+
+def get_all_settings(session) -> dict:
+    """Получить все настройки"""
+    settings = session.query(Settings).all()
+    return {setting.key: setting.value for setting in settings}
+
+
+# Функции для работы с токенами
+def save_token(session, name: str, token: str, token_type: str, is_active: bool = False):
+    """Сохранить токен"""
+    # Деактивируем все остальные токены если этот активный
+    if is_active:
+        session.query(SavedToken).update({SavedToken.is_active: False})
+    
+    # Проверяем, существует ли токен с таким именем
+    existing = session.query(SavedToken).filter(SavedToken.name == name).first()
+    
+    if existing:
+        existing.token = token
+        existing.token_type = token_type
+        existing.is_active = is_active
+        existing.last_used = datetime.utcnow()
+    else:
+        saved_token = SavedToken(
+            name=name,
+            token=token,
+            token_type=token_type,
+            is_active=is_active,
+            last_used=datetime.utcnow()
+        )
+        session.add(saved_token)
+    
+    session.commit()
+    return saved_token
+
+
+def get_all_tokens(session):
+    """Получить все сохраненные токены"""
+    return session.query(SavedToken).order_by(SavedToken.is_active.desc(), SavedToken.last_used.desc()).all()
+
+
+def get_active_token(session):
+    """Получить активный токен"""
+    return session.query(SavedToken).filter(SavedToken.is_active == True).first()
+
+
+def delete_token(session, token_id: int):
+    """Удалить токен"""
+    token = session.query(SavedToken).filter(SavedToken.id == token_id).first()
+    if token:
+        session.delete(token)
+        session.commit()
+        return True
+    return False
+
+
+def activate_token(session, token_id: int):
+    """Активировать токен"""
+    # Деактивируем все токены
+    session.query(SavedToken).update({SavedToken.is_active: False})
+    
+    # Активируем выбранный
+    token = session.query(SavedToken).filter(SavedToken.id == token_id).first()
+    if token:
+        token.is_active = True
+        token.last_used = datetime.utcnow()
+        session.commit()
+        return token
+    return None
 
