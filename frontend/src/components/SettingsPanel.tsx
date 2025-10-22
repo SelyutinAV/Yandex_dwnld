@@ -13,6 +13,7 @@ import {
   HelpCircle,
   Info,
   Key,
+  ListMusic,
   Palette,
   RefreshCw,
   Save,
@@ -127,10 +128,15 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
+  // Состояние для настроек плейлистов
+  const [playlistBatchSize, setPlaylistBatchSize] = useState(100)
+  const [playlistMaxTracks, setPlaylistMaxTracks] = useState<number | null>(null)
+  const [enableRateLimiting, setEnableRateLimiting] = useState(true)
+
   // Состояние для UI
   const [isTokenHelperOpen, setIsTokenHelperOpen] = useState(false)
   const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false)
-  const [activeSection, setActiveSection] = useState<'tokens' | 'download' | 'files' | 'sync' | 'logs'>('tokens')
+  const [activeSection, setActiveSection] = useState<'tokens' | 'download' | 'files' | 'sync' | 'logs' | 'playlists'>('tokens')
 
   // Состояние для файлового браузера
   const [selectedPath, setSelectedPath] = useState('')
@@ -189,6 +195,15 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
           setIsConnected(false)
           onConnectionChange(false)
         }
+      }
+
+      // Загружаем настройки плейлистов
+      const playlistSettingsResponse = await fetch('http://localhost:8000/api/settings/playlist')
+      if (playlistSettingsResponse.ok) {
+        const playlistSettings = await playlistSettingsResponse.json()
+        setPlaylistBatchSize(playlistSettings.batchSize || 100)
+        setPlaylistMaxTracks(playlistSettings.maxTracks || null)
+        setEnableRateLimiting(playlistSettings.enableRateLimiting !== false)
       }
     } catch (error) {
       console.error('Ошибка загрузки настроек:', error)
@@ -301,6 +316,37 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
       }
     } catch (error) {
       console.error('Ошибка сохранения настроек:', error)
+      alert(`Ошибка сохранения настроек: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const savePlaylistSettings = async () => {
+    setIsSaving(true)
+    try {
+      const response = await fetch('http://localhost:8000/api/settings/playlist', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          batchSize: playlistBatchSize,
+          maxTracks: playlistMaxTracks,
+          enableRateLimiting: enableRateLimiting
+        })
+      })
+
+      if (response.ok) {
+        console.log('Настройки плейлистов сохранены успешно')
+        alert('Настройки плейлистов успешно сохранены!')
+      } else {
+        const error = await response.json()
+        console.error('Ошибка сохранения настроек плейлистов:', error)
+        alert(`Ошибка сохранения настроек: ${error.detail || 'Неизвестная ошибка'}`)
+      }
+    } catch (error) {
+      console.error('Ошибка сохранения настроек плейлистов:', error)
       alert(`Ошибка сохранения настроек: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
     } finally {
       setIsSaving(false)
@@ -456,6 +502,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const navSections = [
     { id: 'tokens', label: 'Токены', icon: Key, description: 'Управление токенами' },
     { id: 'download', label: 'Загрузка', icon: Download, description: 'Настройки загрузки' },
+    { id: 'playlists', label: 'Плейлисты', icon: ListMusic, description: 'Настройки обработки плейлистов' },
     { id: 'files', label: 'Файлы', icon: FileText, description: 'Структура файлов' },
     { id: 'sync', label: 'Синхронизация', icon: Clock, description: 'Автосинхронизация' },
     { id: 'logs', label: 'Логи', icon: ScrollText, description: 'Просмотр и очистка логов' }
@@ -758,6 +805,134 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                     </p>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'playlists' && (
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <ListMusic size={20} className="text-primary-500" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Настройки обработки плейлистов</h4>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <p className="text-sm text-blue-800 dark:text-blue-200">
+                    <strong>Оптимизация для крупных плейлистов:</strong> Настройте параметры обработки для больших плейлистов, таких как "Мне нравится".
+                  </p>
+                </div>
+
+                {/* Размер батча */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      Размер батча
+                    </label>
+                    <span title="Количество треков, обрабатываемых за один запрос к API">
+                      <HelpCircle
+                        size={16}
+                        className="text-gray-400 cursor-help"
+                      />
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min="10"
+                      max="500"
+                      step="10"
+                      value={playlistBatchSize}
+                      onChange={(e) => setPlaylistBatchSize(parseInt(e.target.value) || 100)}
+                      className="w-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">треков на запрос</span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Рекомендуется: 100. Большие значения ускоряют обработку, но могут привести к таймаутам.
+                  </p>
+                </div>
+
+                {/* Максимальное количество треков */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      Ограничение треков
+                    </label>
+                    <span title="Максимальное количество треков для обработки. Оставьте пустым для обработки всех.">
+                      <HelpCircle
+                        size={16}
+                        className="text-gray-400 cursor-help"
+                      />
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Без ограничений"
+                      value={playlistMaxTracks || ''}
+                      onChange={(e) => setPlaylistMaxTracks(e.target.value ? parseInt(e.target.value) : null)}
+                      className="w-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">треков (или пусто для всех)</span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Для тестирования большого плейлиста можно установить, например, 100 или 500 треков.
+                  </p>
+                </div>
+
+                {/* Rate Limiting */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="enableRateLimiting"
+                      checked={enableRateLimiting}
+                      onChange={(e) => setEnableRateLimiting(e.target.checked)}
+                      className="w-4 h-4 text-primary-500 bg-gray-100 border-gray-300 rounded focus:ring-primary-500 focus:ring-2"
+                    />
+                    <label htmlFor="enableRateLimiting" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      Включить ограничение скорости (Rate Limiting)
+                    </label>
+                    <span title="Добавляет задержку между запросами для снижения нагрузки на API">
+                      <HelpCircle
+                        size={16}
+                        className="text-gray-400 cursor-help"
+                      />
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 pl-7">
+                    Рекомендуется включать для избежания блокировки со стороны API Яндекс.Музыки.
+                  </p>
+                </div>
+
+                {/* Примеры использования */}
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-4 rounded-lg border border-green-200 dark:border-green-800">
+                  <div className="flex items-start gap-3">
+                    <Info size={18} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                    <div className="space-y-2">
+                      <p className="text-sm font-semibold text-green-800 dark:text-green-200">Примеры настроек:</p>
+                      <ul className="text-xs text-green-700 dark:text-green-300 space-y-1">
+                        <li><strong>Для плейлиста "Мне нравится" (7971 трек):</strong> Батч 100, лимит пусто, Rate Limiting вкл.</li>
+                        <li><strong>Для быстрого тестирования:</strong> Батч 50, лимит 100, Rate Limiting вкл.</li>
+                        <li><strong>Для максимальной скорости (рискованно):</strong> Батч 200, лимит пусто, Rate Limiting выкл.</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Кнопка сохранения */}
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    variant="primary"
+                    onClick={savePlaylistSettings}
+                    icon={Save}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Сохранение...' : 'Сохранить настройки плейлистов'}
+                  </Button>
+                </div>
               </div>
             </div>
           )}

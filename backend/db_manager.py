@@ -235,6 +235,36 @@ class DatabaseManager:
             conn.commit()
             return cursor.rowcount > 0
     
+    def update_token_username(self, token_id: int, username: str) -> bool:
+        """Обновить username токена"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE saved_tokens SET username = ? WHERE id = ?", (username, token_id))
+            conn.commit()
+            return cursor.rowcount > 0
+    
+    def get_token_by_id(self, token_id: int) -> Optional[Dict]:
+        """Получить токен по ID"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, name, token, token_type, username, is_active, created_at
+                FROM saved_tokens WHERE id = ?
+            """, (token_id,))
+            
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'id': row[0],
+                    'name': row[1],
+                    'token': row[2],
+                    'token_type': row[3],
+                    'username': row[4],
+                    'is_active': bool(row[5]),
+                    'created_at': row[6]
+                }
+            return None
+    
     def delete_token(self, token_id: int) -> bool:
         """Удалить токен"""
         with self.get_connection() as conn:
@@ -586,6 +616,71 @@ class DatabaseManager:
             conn.commit()
             
             return deleted_count
+    
+    def get_playlist_settings(self) -> Dict:
+        """
+        Получить настройки обработки плейлистов
+        
+        Returns:
+            Словарь с настройками
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Получаем настройки
+            settings = {
+                'batch_size': 100,  # По умолчанию
+                'max_tracks': None,  # None = все треки
+                'enable_rate_limiting': True
+            }
+            
+            cursor.execute("SELECT key, value FROM settings WHERE key LIKE 'playlist_%'")
+            for row in cursor.fetchall():
+                key = row[0].replace('playlist_', '')
+                value = row[1]
+                
+                # Преобразуем значения
+                if key in ['batch_size', 'max_tracks']:
+                    settings[key] = int(value) if value and value != 'null' else None
+                elif key == 'enable_rate_limiting':
+                    settings[key] = value.lower() == 'true'
+            
+            return settings
+    
+    def update_playlist_settings(self, settings: Dict) -> bool:
+        """
+        Обновить настройки обработки плейлистов
+        
+        Args:
+            settings: Словарь с настройками
+            
+        Returns:
+            True если успешно
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            for key, value in settings.items():
+                db_key = f'playlist_{key}'
+                
+                # Преобразуем значения
+                if value is None:
+                    db_value = 'null'
+                elif isinstance(value, bool):
+                    db_value = 'true' if value else 'false'
+                else:
+                    db_value = str(value)
+                
+                cursor.execute("""
+                    INSERT INTO settings (key, value, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at
+                """, (db_key, db_value))
+            
+            conn.commit()
+            return True
 
 
 # Глобальный экземпляр менеджера БД

@@ -235,12 +235,14 @@ class YandexMusicClient:
             traceback.print_exc()
             return []
     
-    def get_playlist_tracks(self, playlist_id: str) -> List[dict]:
+    def get_playlist_tracks(self, playlist_id: str, batch_size: int = 100, max_tracks: Optional[int] = None) -> List[dict]:
         """
-        Получить треки из плейлиста
+        Получить треки из плейлиста с поддержкой пакетной обработки
         
         Args:
             playlist_id: ID плейлиста
+            batch_size: Размер батча для обработки (по умолчанию 100)
+            max_tracks: Максимальное количество треков для обработки (None = все)
             
         Returns:
             Список треков
@@ -255,8 +257,13 @@ class YandexMusicClient:
                 raise Exception("Клиент не инициализирован")
             
             print(f"Получаем плейлист {playlist_id}")
-            # Для получения треков плейлиста нужен UID пользователя
-            # Попробуем использовать username из базы данных
+            download_logger.info(f"🔄 get_playlist_tracks вызван с playlist_id = {playlist_id}")
+            
+            # Специальная обработка для плейлиста "Мне нравится"
+            if playlist_id == 'likes':
+                return self._get_liked_tracks_optimized(batch_size, max_tracks)
+            
+            # Для обычных плейлистов
             try:
                 from db_manager import DatabaseManager
                 db_manager = DatabaseManager()
@@ -280,13 +287,141 @@ class YandexMusicClient:
             if not tracks:
                 tracks = []
             
+            # Ограничиваем количество треков если указано
+            if max_tracks and len(tracks) > max_tracks:
+                download_logger.info(f"⚠️  Ограничиваем обработку до {max_tracks} треков из {len(tracks)}")
+                tracks = tracks[:max_tracks]
+            
             print(f"Получено {len(tracks)} треков из плейлиста {playlist_id}")
             
+            return self._process_tracks_batch(tracks, batch_size)
+            
+        except Exception as e:
+            print(f"Ошибка получения треков для плейлиста {playlist_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _get_liked_tracks_optimized(self, batch_size: int = 100, max_tracks: Optional[int] = None) -> List[dict]:
+        """
+        Оптимизированное получение лайкнутых треков с пакетной обработкой
+        
+        Args:
+            batch_size: Размер батча для обработки
+            max_tracks: Максимальное количество треков для обработки (None = все)
+            
+        Returns:
+            Список треков
+        """
+        download_logger.info("🔄 Получаем плейлист 'Мне нравится' (оптимизированно)...")
+        
+        try:
+            # Получаем список лайкнутых треков
+            liked_tracks = self.client.users_likes_tracks()
+            
+            if not liked_tracks or len(liked_tracks) == 0:
+                download_logger.warning("⚠️  Плейлист 'Мне нравится' пуст или недоступен")
+                return []
+            
+            total_tracks = len(liked_tracks)
+            download_logger.info(f"✅ Получено {total_tracks} лайков")
+            
+            # Ограничиваем количество треков если указано
+            if max_tracks and total_tracks > max_tracks:
+                download_logger.info(f"⚠️  Ограничиваем обработку до {max_tracks} треков из {total_tracks}")
+                liked_tracks = liked_tracks[:max_tracks]
+                total_tracks = max_tracks
+            
+            # Получаем ID всех треков
+            track_ids = [track_short.id for track_short in liked_tracks if track_short.id]
+            download_logger.info(f"📋 Получено {len(track_ids)} ID треков")
+            
+            # Обрабатываем батчами для оптимизации
             result = []
-            for track_short in tracks:
+            for i in range(0, len(track_ids), batch_size):
+                batch_ids = track_ids[i:i + batch_size]
+                batch_num = (i // batch_size) + 1
+                total_batches = (len(track_ids) + batch_size - 1) // batch_size
+                
+                download_logger.info(f"📦 Обрабатываем батч {batch_num}/{total_batches} ({len(batch_ids)} треков)")
+                
+                try:
+                    # Используем метод tracks() для получения полной информации о батче треков
+                    tracks = self.client.tracks(batch_ids)
+                    
+                    for track in tracks:
+                        try:
+                            if not track:
+                                continue
+                            
+                            # Безопасное получение данных трека
+                            artists = []
+                            if track.artists:
+                                artists = [artist.name for artist in track.artists if hasattr(artist, 'name')]
+                            
+                            album_title = None
+                            if track.albums and len(track.albums) > 0:
+                                album = track.albums[0]
+                                album_title = getattr(album, 'title', None)
+                            
+                            track_data = {
+                                'id': str(track.id) if track.id else None,
+                                'title': track.title or 'Без названия',
+                                'artist': ', '.join(artists) if artists else 'Неизвестный исполнитель',
+                                'album': album_title,
+                                'duration': track.duration_ms // 1000 if track.duration_ms else 0,
+                                'available': getattr(track, 'available', True)
+                            }
+                            
+                            result.append(track_data)
+                            
+                        except Exception as track_error:
+                            download_logger.warning(f"Ошибка обработки трека в батче: {track_error}")
+                            continue
+                    
+                    download_logger.info(f"✅ Батч {batch_num}/{total_batches} обработан: {len(tracks)} треков")
+                    
+                    # Небольшая задержка между батчами для снижения нагрузки на API
+                    import time
+                    time.sleep(0.5)
+                    
+                except Exception as batch_error:
+                    download_logger.error(f"❌ Ошибка обработки батча {batch_num}: {batch_error}")
+                    continue
+            
+            download_logger.info(f"✅ Успешно обработано {len(result)} треков из 'Мне нравится'")
+            return result
+            
+        except Exception as e:
+            download_logger.error(f"❌ Ошибка получения лайков: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _process_tracks_batch(self, tracks, batch_size: int = 100) -> List[dict]:
+        """
+        Обработка списка треков батчами
+        
+        Args:
+            tracks: Список треков для обработки
+            batch_size: Размер батча
+            
+        Returns:
+            Список обработанных треков
+        """
+        result = []
+        total_tracks = len(tracks)
+        
+        for i in range(0, total_tracks, batch_size):
+            batch = tracks[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+            total_batches = (total_tracks + batch_size - 1) // batch_size
+            
+            download_logger.info(f"📦 Обрабатываем батч {batch_num}/{total_batches} ({len(batch)} треков)")
+            
+            for track_short in batch:
                 try:
                     if not track_short.track:
-                        print("Пропускаем трек без данных")
                         continue
                         
                     track = track_short.track
@@ -313,17 +448,13 @@ class YandexMusicClient:
                     result.append(track_data)
                     
                 except Exception as track_error:
-                    print(f"Ошибка обработки трека: {track_error}")
+                    download_logger.warning(f"Ошибка обработки трека: {track_error}")
                     continue
             
-            print(f"Успешно обработано {len(result)} треков")
-            return result
-            
-        except Exception as e:
-            print(f"Ошибка получения треков для плейлиста {playlist_id}: {e}")
-            import traceback
-            traceback.print_exc()
-            return []
+            download_logger.info(f"✅ Батч {batch_num}/{total_batches} обработан")
+        
+        download_logger.info(f"✅ Всего обработано {len(result)} треков")
+        return result
     
     def download_track(
         self, 

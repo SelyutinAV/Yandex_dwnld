@@ -271,11 +271,22 @@ async def save_token_endpoint(request: SaveTokenRequest):
         if not success:
             raise HTTPException(status_code=400, detail="Токен не работает")
         
+        # Получаем username из токена, если не указан
+        username = request.username
+        if not username and test_client.client:
+            try:
+                account = test_client.client.account_status()
+                if account and account.account:
+                    username = account.account.login
+                    print(f"Получен username из токена: {username}")
+            except Exception as e:
+                print(f"Не удалось получить username из токена: {e}")
+        
         # Определяем тип токена
         token_type = "oauth" if request.token.startswith('y0_') else "session_id"
         
         # Сохраняем токен
-        token_id = db_manager.save_token(request.name, request.token, token_type, request.username, is_active=True)
+        token_id = db_manager.save_token(request.name, request.token, token_type, username, is_active=True)
         
         # Обновляем глобальный клиент
         update_yandex_client(request.token)
@@ -361,6 +372,46 @@ async def rename_token_endpoint(token_id: int, request: RenameTokenRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.put("/api/tokens/{token_id}/update-username")
+async def update_token_username_endpoint(token_id: int):
+    """Обновить username токена из аккаунта"""
+    try:
+        # Получаем токен
+        token_info = db_manager.get_token_by_id(token_id)
+        if not token_info:
+            raise HTTPException(status_code=404, detail="Токен не найден")
+        
+        # Тестируем токен и получаем username
+        test_client = YandexMusicClient(token_info['token'])
+        success = test_client.connect()
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="Токен не работает")
+        
+        username = None
+        if test_client.client:
+            try:
+                account = test_client.client.account_status()
+                if account and account.account:
+                    username = account.account.login
+                    print(f"Обновлен username для токена {token_id}: {username}")
+            except Exception as e:
+                print(f"Не удалось получить username: {e}")
+        
+        if username:
+            success = db_manager.update_token_username(token_id, username)
+            if not success:
+                raise HTTPException(status_code=500, detail="Не удалось обновить username")
+            
+            return {"status": "success", "message": f"Username обновлен: {username}"}
+        else:
+            raise HTTPException(status_code=400, detail="Не удалось получить username из токена")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/playlists", response_model=List[Playlist])
 async def get_playlists():
     """Получить список плейлистов пользователя"""
@@ -390,7 +441,17 @@ async def get_playlist_tracks(playlist_id: str):
         if not yandex_client:
             raise HTTPException(status_code=400, detail="Клиент не инициализирован")
         
-        tracks = yandex_client.get_playlist_tracks(playlist_id)
+        # Получаем настройки плейлистов
+        playlist_settings = db_manager.get_playlist_settings()
+        batch_size = playlist_settings.get('batch_size', 100)
+        max_tracks = playlist_settings.get('max_tracks')
+        
+        # Получаем треки с учетом настроек
+        tracks = yandex_client.get_playlist_tracks(
+            playlist_id, 
+            batch_size=batch_size,
+            max_tracks=max_tracks
+        )
         return tracks
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -403,11 +464,10 @@ async def get_subscription_info():
             raise HTTPException(status_code=400, detail="Клиент не инициализирован")
         
         # Получаем информацию об аккаунте
-        from yandex_music import Client
-        client = Client().init()
-        client._session_id = yandex_client.token
+        if not yandex_client.client:
+            raise HTTPException(status_code=400, detail="Клиент не подключен")
         
-        account = client.account_status()
+        account = yandex_client.client.account_status()
         
         return {
             'has_subscription': account.subscription is not None,
@@ -657,6 +717,38 @@ async def get_settings():
             "fileTemplate": db_manager.get_setting("file_template", "{artist} - {title}"),
             "folderStructure": db_manager.get_setting("folder_structure", "{artist}/{album}")
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/settings/playlist")
+async def get_playlist_settings():
+    """Получить настройки обработки плейлистов"""
+    try:
+        settings = db_manager.get_playlist_settings()
+        return {
+            "batchSize": settings.get('batch_size', 100),
+            "maxTracks": settings.get('max_tracks'),
+            "enableRateLimiting": settings.get('enable_rate_limiting', True)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/settings/playlist")
+async def update_playlist_settings(request: dict):
+    """Обновить настройки обработки плейлистов"""
+    try:
+        settings = {
+            'batch_size': request.get('batchSize', 100),
+            'max_tracks': request.get('maxTracks'),
+            'enable_rate_limiting': request.get('enableRateLimiting', True)
+        }
+        
+        success = db_manager.update_playlist_settings(settings)
+        
+        if success:
+            return {"status": "success", "message": "Настройки обновлены"}
+        else:
+            raise HTTPException(status_code=500, detail="Не удалось обновить настройки")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
