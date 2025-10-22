@@ -964,12 +964,18 @@ async def get_download_progress():
         with db_manager.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Общий прогресс - только завершённые треки
-            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status = 'completed'")
-            completed_tracks = cursor.fetchone()[0]
+            # Прогресс текущей сессии загрузки - только треки которые были в работе
+            cursor.execute("""
+                SELECT COUNT(*) FROM download_queue 
+                WHERE status IN ('pending', 'downloading', 'processing', 'completed')
+            """)
+            total_in_session = cursor.fetchone()[0]
             
-            cursor.execute("SELECT COUNT(*) FROM download_queue")
-            total_tracks = cursor.fetchone()[0]
+            cursor.execute("""
+                SELECT COUNT(*) FROM download_queue 
+                WHERE status = 'completed'
+            """)
+            completed_in_session = cursor.fetchone()[0]
             
             # Текущий обрабатываемый файл (processing или downloading)
             cursor.execute("""
@@ -981,14 +987,14 @@ async def get_download_progress():
             """)
             current_track = cursor.fetchone()
             
-            # Проверяем есть ли активные загрузки
-            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status IN ('processing', 'downloading', 'queued')")
+            # Проверяем есть ли активные загрузки (только downloading и processing)
+            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status IN ('processing', 'downloading')")
             active_downloads = cursor.fetchone()[0]
             
             result = {
                 "is_active": active_downloads > 0,
-                "overall_progress": completed_tracks,
-                "overall_total": total_tracks,
+                "overall_progress": completed_in_session,
+                "overall_total": total_in_session,
                 "current_track": None,
                 "current_status": None,
                 "current_progress": 0
@@ -996,7 +1002,7 @@ async def get_download_progress():
             
             if current_track:
                 title, artist, status, progress = current_track
-                result["current_track"] = f"{title} - {artist}"
+                # Не показываем название трека в верхнем статус-баре
                 result["current_status"] = status
                 result["current_progress"] = progress or 0
             
@@ -1004,6 +1010,20 @@ async def get_download_progress():
             
     except Exception as e:
         logger.error(f"Ошибка получения прогресса: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/settings/download-path")
+async def update_download_path(request: dict):
+    """Обновить только путь загрузки"""
+    try:
+        download_path = request.get('downloadPath')
+        if not download_path:
+            raise HTTPException(status_code=400, detail="downloadPath обязателен")
+        
+        db_manager.save_setting("download_path", download_path)
+        return {"message": "Путь загрузки обновлен", "downloadPath": download_path}
+    except Exception as e:
+        logger.error(f"Ошибка обновления пути загрузки: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/settings")
@@ -1126,15 +1146,33 @@ async def list_folders(request: ListFoldersRequest):
         if not folder_path.is_dir():
             raise HTTPException(status_code=400, detail="Указанный путь не является директорией")
         
-        # Получаем только директории
+        # Получаем только директории (включая символические ссылки на директории)
         folders = []
         try:
             for item in folder_path.iterdir():
-                if item.is_dir() and not item.name.startswith('.'):
+                # Проверяем, что это директория (обычная или символическая ссылка на директорию)
+                is_directory = item.is_dir()
+                if not is_directory and item.is_symlink():
+                    # Проверяем, что символическая ссылка ведет на директорию
+                    try:
+                        target_path = item.resolve()
+                        is_directory = target_path.is_dir()
+                    except (OSError, PermissionError):
+                        is_directory = False
+                
+                if is_directory and not item.name.startswith('.'):
+                    # Проверяем наличие подпапок с обработкой ошибок доступа
+                    has_children = False
+                    try:
+                        has_children = any(item.iterdir())
+                    except PermissionError:
+                        # Если нет доступа к содержимому, предполагаем что есть подпапки
+                        has_children = True
+                    
                     folders.append({
                         "name": item.name,
                         "path": str(item),
-                        "hasChildren": any(item.iterdir()) if item.is_dir() else False
+                        "hasChildren": has_children
                     })
         except PermissionError:
             # Игнорируем папки без доступа
@@ -1764,6 +1802,19 @@ async def queue_stop():
         return result
     except Exception as e:
         logger.error(f"Ошибка остановки: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/queue/restart")
+async def queue_restart():
+    """Принудительно перезапустить воркер загрузки"""
+    if not download_queue_manager:
+        raise HTTPException(status_code=400, detail="Менеджер очереди не инициализирован")
+    
+    try:
+        result = download_queue_manager.restart()
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка перезапуска: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/queue/clear-completed")

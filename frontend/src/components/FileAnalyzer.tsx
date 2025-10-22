@@ -1,6 +1,7 @@
-import { ExternalLink, FileAudio, FolderOpen, HardDrive, Music, RefreshCw } from 'lucide-react'
+import { FileAudio, FolderPlus, HardDrive, Music, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAppContext } from '../contexts/AppContext'
+import FolderBrowser from './FolderBrowser'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 
@@ -35,6 +36,9 @@ function FileAnalyzer() {
   })
   const [recentFiles, setRecentFiles] = useState<AudioFile[]>([])
   const { state, triggerRefresh } = useAppContext()
+
+  // Состояние для браузера папок
+  const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false)
 
   // Загружаем данные при монтировании компонента
   useEffect(() => {
@@ -88,9 +92,35 @@ function FileAnalyzer() {
     await loadData()
   }
 
-  const openInFileManager = () => {
-    // Открываем папку в файловом менеджере через системную команду
-    window.open(`file://${downloadPath}`, '_blank')
+  const handleSelectDownloadPath = () => {
+    setIsFolderBrowserOpen(true)
+  }
+
+  const handleFolderConfirm = async (selectedPath: string) => {
+    try {
+      // Сохраняем выбранный путь в настройках
+      const response = await fetch('http://localhost:8000/api/settings/download-path', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          downloadPath: selectedPath
+        })
+      })
+
+      if (response.ok) {
+        setDownloadPath(selectedPath)
+        // Обновляем анализ файлов с новым путем
+        await analyzeFiles()
+      } else {
+        console.error('Ошибка при сохранении пути')
+        alert('Ошибка при сохранении пути')
+      }
+    } catch (error) {
+      console.error('Ошибка при подтверждении выбора:', error)
+      alert(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+    }
   }
 
   const clearStats = async () => {
@@ -142,27 +172,6 @@ function FileAnalyzer() {
     return `${mb.toFixed(2)} МБ`
   }
 
-  const selectFolder = async () => {
-    try {
-      // Открываем диалог выбора папки через API
-      const response = await fetch('http://localhost:8000/api/folders/list', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ path: "/home/urch" })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log('Доступные папки:', data.folders)
-        // TODO: Показать диалог выбора папки
-      }
-    } catch (error) {
-      console.error('Ошибка получения списка папок:', error)
-    }
-  }
-
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString)
@@ -183,12 +192,6 @@ function FileAnalyzer() {
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-4">
           <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Анализ файлов</h2>
-          {state.refreshTrigger > 0 && (
-            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-500"></div>
-              <span>Обновлено</span>
-            </div>
-          )}
         </div>
         <div className="flex gap-2">
           <Button
@@ -235,18 +238,11 @@ function FileAnalyzer() {
             disabled
           />
           <Button
-            variant="secondary"
-            onClick={selectFolder}
-            icon={FolderOpen}
-          >
-            Выбрать
-          </Button>
-          <Button
             variant="primary"
-            onClick={openInFileManager}
-            icon={ExternalLink}
+            onClick={handleSelectDownloadPath}
+            icon={FolderPlus}
           >
-            Открыть папку
+            Выбрать папку
           </Button>
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
@@ -397,6 +393,15 @@ function FileAnalyzer() {
           </div>
         </Card>
       )}
+
+      {/* Браузер папок */}
+      <FolderBrowser
+        isOpen={isFolderBrowserOpen}
+        onClose={() => setIsFolderBrowserOpen(false)}
+        onConfirm={handleFolderConfirm}
+        title="Выберите папку для анализа файлов"
+        initialPath={downloadPath}
+      />
     </div>
   )
 }

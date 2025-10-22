@@ -1,12 +1,7 @@
 import {
   AlertCircle,
-  Check,
-  ChevronDown,
-  ChevronRight,
   Download,
-  Edit,
   FileText,
-  Folder,
   FolderOpen,
   FolderPlus,
   HelpCircle,
@@ -21,7 +16,8 @@ import {
   Wifi,
   WifiOff
 } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+import FolderBrowser from './FolderBrowser'
 import TokenHelper from './TokenHelper'
 import TokenManager from './TokenManager'
 import { Button } from './ui/Button'
@@ -29,81 +25,6 @@ import { Input } from './ui/Input'
 
 interface SettingsPanelProps {
   onConnectionChange: (connected: boolean) => void
-}
-
-interface FolderTreeItemProps {
-  path: string
-  name: string
-  level: number
-  isExpanded: boolean
-  isSelected: boolean
-  hasChildren: boolean
-  onToggle: () => void
-  onSelect: () => void
-  children?: React.ReactNode
-}
-
-const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
-  name,
-  level,
-  isExpanded,
-  isSelected,
-  hasChildren,
-  onToggle,
-  onSelect,
-  children
-}) => {
-  return (
-    <div>
-      <div
-        className={`flex items-center gap-2 py-2 px-3 rounded-lg cursor-pointer transition-colors ${isSelected
-          ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-500'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-          }`}
-        style={{ paddingLeft: `${level * 20 + 12}px` }}
-      >
-        {hasChildren ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggle()
-            }}
-            className="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
-          >
-            {isExpanded ? (
-              <ChevronDown size={16} className="text-gray-600 dark:text-gray-400" />
-            ) : (
-              <ChevronRight size={16} className="text-gray-600 dark:text-gray-400" />
-            )}
-          </button>
-        ) : (
-          <div className="w-5" />
-        )}
-        {isExpanded && hasChildren ? (
-          <FolderOpen size={18} className="text-blue-500" />
-        ) : (
-          <Folder size={18} className="text-blue-500" />
-        )}
-        <span
-          className="flex-1 text-sm text-gray-900 dark:text-gray-100"
-          onClick={onToggle}
-        >
-          {name}
-        </span>
-        <Button
-          variant="secondary"
-          onClick={onSelect}
-          className={`text-xs px-2 py-1 ${isSelected
-            ? 'bg-green-500 hover:bg-green-600 text-white'
-            : 'bg-green-100 hover:bg-green-200 text-green-700'
-            }`}
-        >
-          {isSelected ? <Check size={12} /> : 'Выбрать'}
-        </Button>
-      </div>
-      {isExpanded && children}
-    </div>
-  )
 }
 
 function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
@@ -129,27 +50,6 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const [isTokenHelperOpen, setIsTokenHelperOpen] = useState(false)
   const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<'tokens' | 'download' | 'logs'>('tokens')
-
-  // Состояние для файлового браузера
-  const [selectedPath, setSelectedPath] = useState('')
-  const [editablePath, setEditablePath] = useState('')
-  const [isEditingPath, setIsEditingPath] = useState(false)
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['/home/urch']))
-  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
-
-  // Структура дерева папок (моковые данные)
-  const folderTree: Record<string, string[]> = {
-    '/': ['home', 'mnt', 'usr', 'opt'],
-    '/home': ['urch'],
-    '/home/urch': ['Desktop', 'Documents', 'Downloads', 'Music', 'Pictures', 'Videos', 'Projects'],
-    '/home/urch/Music': ['Yandex', 'Spotify', 'iTunes'],
-    '/home/urch/Documents': ['Work', 'Personal', 'Archive'],
-    '/home/urch/Downloads': [],
-    '/home/urch/Projects': ['yandex_downloads', 'other-project'],
-    '/mnt': ['storage', 'backup'],
-    '/usr': ['local', 'share', 'bin'],
-    '/opt': []
-  }
 
   // Загрузка настроек при монтировании компонента
   useEffect(() => {
@@ -316,134 +216,33 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   }
 
   const handleSelectDownloadPath = () => {
-    setSelectedPath(downloadPath)
-    setEditablePath(downloadPath)
-    setIsEditingPath(false)
     setIsFolderBrowserOpen(true)
   }
 
-  const toggleFolder = (path: string) => {
-    const newExpandedFolders = new Set(expandedFolders)
-    if (expandedFolders.has(path)) {
-      newExpandedFolders.delete(path)
-    } else {
-      newExpandedFolders.add(path)
-    }
-    setExpandedFolders(newExpandedFolders)
-  }
-
-  const handleCreateFolder = async () => {
-    const folderName = prompt('Введите имя новой папки:')
-    if (!folderName || !folderName.trim()) return
-
-    const newFolderPath = selectedPath ? `${selectedPath}/${folderName.trim()}` : `/${folderName.trim()}`
-
-    setIsCreatingFolder(true)
+  const handleFolderConfirm = async (selectedPath: string) => {
     try {
-      const response = await fetch('http://localhost:8000/api/folders/create', {
+      // Сохраняем выбранный путь в настройках
+      const response = await fetch('http://localhost:8000/api/settings/download-path', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ path: newFolderPath })
+        body: JSON.stringify({
+          downloadPath: selectedPath
+        })
       })
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Ошибка создания папки')
+      if (response.ok) {
+        setDownloadPath(selectedPath)
+        setIsFolderBrowserOpen(false)
+      } else {
+        console.error('Ошибка при сохранении пути')
+        alert('Ошибка при сохранении пути')
       }
-
-      await response.json()
-      alert(`Папка "${newFolderPath}" успешно создана!`)
-      setEditablePath(newFolderPath)
-      setSelectedPath(newFolderPath)
     } catch (error) {
-      console.error('Ошибка создания папки:', error)
-      alert(`Ошибка при создании папки: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
-    } finally {
-      setIsCreatingFolder(false)
+      console.error('Ошибка при подтверждении выбора:', error)
+      alert(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
     }
-  }
-
-  const handleConfirmSelection = async () => {
-    const pathToUse = isEditingPath ? editablePath : selectedPath
-
-    if (pathToUse) {
-      try {
-        // Проверяем существование папки
-        const checkResponse = await fetch(`http://localhost:8000/api/folders/exists?path=${encodeURIComponent(pathToUse)}`)
-        const checkResult = await checkResponse.json()
-
-        if (!checkResult.exists) {
-          // Если папка не существует, предлагаем создать
-          const shouldCreate = confirm(`Папка "${pathToUse}" не существует. Создать её?`)
-
-          if (shouldCreate) {
-            const createResponse = await fetch('http://localhost:8000/api/folders/create', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ path: pathToUse })
-            })
-
-            if (!createResponse.ok) {
-              const error = await createResponse.json()
-              throw new Error(error.detail || 'Ошибка создания папки')
-            }
-
-            alert(`Папка "${pathToUse}" успешно создана!`)
-          } else {
-            return // Не закрываем диалог если пользователь отказался
-          }
-        }
-
-        setDownloadPath(pathToUse)
-      } catch (error) {
-        console.error('Ошибка при подтверждении выбора:', error)
-        alert(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
-        return // Не закрываем диалог при ошибке
-      }
-    }
-    setIsFolderBrowserOpen(false)
-    setIsEditingPath(false)
-  }
-
-  const buildFullPath = (parentPath: string, folderName: string): string => {
-    if (parentPath === '/') return `/${folderName}`
-    return `${parentPath}/${folderName}`
-  }
-
-  const hasSubfolders = (path: string): boolean => {
-    return folderTree[path] && folderTree[path].length > 0
-  }
-
-  const renderFolderTree = (parentPath: string, level: number = 0): React.ReactNode => {
-    const folders = folderTree[parentPath]
-    if (!folders || folders.length === 0) return null
-
-    return folders.map((folderName) => {
-      const fullPath = buildFullPath(parentPath, folderName)
-      const isExpanded = expandedFolders.has(fullPath)
-      const isSelected = selectedPath === fullPath
-      const hasChildren = hasSubfolders(fullPath)
-
-      return (
-        <FolderTreeItem
-          key={fullPath}
-          path={fullPath}
-          name={folderName}
-          level={level}
-          isExpanded={isExpanded}
-          isSelected={isSelected}
-          hasChildren={hasChildren}
-          onToggle={() => toggleFolder(fullPath)}
-          onSelect={() => setSelectedPath(fullPath)}
-        >
-          {renderFolderTree(fullPath, level + 1)}
-        </FolderTreeItem>
-      )
-    })
   }
 
   const navSections = [
@@ -850,148 +649,14 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
         onTokenReceived={handleTokenReceived}
       />
 
-      {/* Модальное окно выбора папки */}
-      {isFolderBrowserOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
-            {/* Заголовок */}
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <FolderOpen size={24} className="text-primary-500" />
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                    Выберите папку для сохранения
-                  </h3>
-                </div>
-                <button
-                  onClick={() => setIsFolderBrowserOpen(false)}
-                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* Дерево папок */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="space-y-1">
-                {/* Корневая папка */}
-                <FolderTreeItem
-                  path="/"
-                  name="Корневая папка (/)"
-                  level={0}
-                  isExpanded={expandedFolders.has('/')}
-                  isSelected={selectedPath === '/'}
-                  hasChildren={hasSubfolders('/')}
-                  onToggle={() => toggleFolder('/')}
-                  onSelect={() => setSelectedPath('/')}
-                >
-                  {renderFolderTree('/', 1)}
-                </FolderTreeItem>
-              </div>
-            </div>
-
-            {/* Выбранный путь и кнопки */}
-            <div className="p-6 border-t border-gray-200 dark:border-gray-700">
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                    {isEditingPath ? 'Редактирование пути:' : 'Выбранный путь:'}
-                  </p>
-                  {selectedPath && !isEditingPath && (
-                    <div className="flex gap-2">
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          setIsEditingPath(true)
-                          setEditablePath(selectedPath)
-                        }}
-                        icon={Edit}
-                        className="text-xs px-2 py-1"
-                      >
-                        Изменить
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={handleCreateFolder}
-                        icon={FolderPlus}
-                        loading={isCreatingFolder}
-                        className="text-xs px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700"
-                      >
-                        Создать папку
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                {isEditingPath ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={editablePath}
-                      onChange={(e) => setEditablePath(e.target.value)}
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      placeholder="/home/user/Music/Yandex"
-                    />
-                    <Button
-                      variant="success"
-                      onClick={() => {
-                        setSelectedPath(editablePath)
-                        setIsEditingPath(false)
-                      }}
-                      className="bg-green-500 hover:bg-green-600 text-white"
-                    >
-                      ✓
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setIsEditingPath(false)
-                        setEditablePath(selectedPath)
-                      }}
-                      className="bg-gray-100 hover:bg-gray-200 text-gray-700"
-                    >
-                      ✕
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 p-3 rounded-lg text-sm font-mono text-primary-700 dark:text-primary-300">
-                    {selectedPath || 'Не выбрано'}
-                  </div>
-                )}
-              </div>
-
-              {isEditingPath && (
-                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <p className="text-sm text-blue-800 dark:text-blue-200">
-                    <strong>Подсказка:</strong> Вы можете указать несуществующую папку, и она будет создана автоматически при первой загрузке.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex gap-3 justify-end">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setIsFolderBrowserOpen(false)
-                    setIsEditingPath(false)
-                  }}
-                  className="bg-gray-100 hover:bg-gray-200 text-gray-700"
-                >
-                  Отмена
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleConfirmSelection}
-                  disabled={!selectedPath && !editablePath}
-                  className="bg-primary-500 hover:bg-primary-600"
-                >
-                  Подтвердить выбор
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Браузер папок */}
+      <FolderBrowser
+        isOpen={isFolderBrowserOpen}
+        onClose={() => setIsFolderBrowserOpen(false)}
+        onConfirm={handleFolderConfirm}
+        title="Выберите папку для сохранения"
+        initialPath={downloadPath}
+      />
     </div>
   )
 }

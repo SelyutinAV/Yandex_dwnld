@@ -122,6 +122,9 @@ class DownloadQueueManager:
             cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status = 'pending'")
             pending = cursor.fetchone()[0]
             
+            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status = 'queued'")
+            queued = cursor.fetchone()[0]
+            
             cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status = 'downloading'")
             downloading = cursor.fetchone()[0]
             
@@ -136,6 +139,7 @@ class DownloadQueueManager:
             
             return {
                 'pending': pending,
+                'queued': queued,
                 'downloading': downloading,
                 'completed': completed,
                 'errors': errors,
@@ -180,19 +184,29 @@ class DownloadQueueManager:
         
         # Проверяем есть ли треки для загрузки
         stats = self.get_stats()
-        if stats['pending'] == 0:
+        if stats['queued'] == 0:
             return {'status': 'empty', 'message': 'Нет треков для загрузки'}
+        
+        # Переводим треки из pending в queued (если есть)
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE download_queue 
+                SET status = 'queued', updated_at = ?
+                WHERE status = 'pending'
+            """, (datetime.now().isoformat(),))
+            conn.commit()
         
         # Запускаем воркер
         self.is_running = True
         self.is_paused = False
         self.worker_task = asyncio.create_task(self._worker())
         
-        logger.info(f"🚀 Запущена загрузка {stats['pending']} треков")
+        logger.info(f"🚀 Запущена загрузка {stats['queued']} треков")
         
         return {
             'status': 'started',
-            'pending': stats['pending']
+            'queued': stats['queued']
         }
     
     def pause(self):
@@ -232,6 +246,34 @@ class DownloadQueueManager:
         logger.info("🛑 Загрузка остановлена")
         
         return {'status': 'stopped'}
+    
+    def restart(self):
+        """Принудительно перезапустить воркер загрузки"""
+        logger.info("🔄 Принудительный перезапуск воркера загрузки")
+        
+        # Останавливаем текущий воркер
+        if self.is_running:
+            self.is_running = False
+            if self.worker_task:
+                self.worker_task.cancel()
+        
+        # Сбрасываем состояние паузы
+        self.is_paused = False
+        
+        # Запускаем новый воркер асинхронно
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Если цикл уже запущен, создаем задачу
+                task = loop.create_task(self.start())
+                return {'status': 'restarting', 'message': 'Воркер перезапускается'}
+            else:
+                # Если цикл не запущен, запускаем его
+                return loop.run_until_complete(self.start())
+        except RuntimeError:
+            # Если нет цикла событий, создаем новый
+            return asyncio.run(self.start())
     
     async def _worker(self):
         """Фоновый воркер для поштучной обработки очереди"""
@@ -277,7 +319,7 @@ class DownloadQueueManager:
             cursor.execute("""
                 SELECT id, track_id, title, artist, album, quality
                 FROM download_queue
-                WHERE status = 'pending'
+                WHERE status = 'queued'
                 ORDER BY created_at ASC
                 LIMIT 1
             """)

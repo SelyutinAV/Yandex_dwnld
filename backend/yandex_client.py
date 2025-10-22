@@ -819,7 +819,7 @@ class YandexMusicClient:
                 return playlist.title
             else:
                 return f"Playlist_{playlist_id}"
-            
+                
         except Exception as e:
             print(f"Ошибка получения названия плейлиста {playlist_id}: {e}")
             return f"Playlist_{playlist_id}"

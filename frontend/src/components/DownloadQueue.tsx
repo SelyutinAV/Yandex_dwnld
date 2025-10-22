@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle, Download, Pause, Play, RotateCcw, Trash2, X } from 'lucide-react'
+import { AlertCircle, CheckCircle, Download, Pause, Play, RefreshCw, RotateCcw, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAppContext } from '../contexts/AppContext'
 import { Button } from './ui/Button'
@@ -11,7 +11,7 @@ interface Track {
   title: string
   artist: string
   album?: string
-  status: 'queued' | 'pending' | 'processing' | 'downloading' | 'completed' | 'error'
+  status: 'pending' | 'queued' | 'processing' | 'downloading' | 'completed' | 'error'
   progress: number
   quality?: string
   error_message?: string
@@ -31,6 +31,7 @@ function DownloadQueue() {
     completedInQueue: 0,
     downloadingInQueue: 0,
     pendingInQueue: 0,
+    queuedInQueue: 0,
     errorsInQueue: 0,
     totalDownloaded: 0,
     totalSizeMB: 0,
@@ -49,6 +50,10 @@ function DownloadQueue() {
   // Функция для фильтрации треков по статусу
   const getFilteredTracks = () => {
     if (!statusFilter) return tracks
+    if (statusFilter === 'pending') {
+      // Для фильтра "pending" показываем треки со статусами 'pending' и 'queued'
+      return tracks.filter(track => track.status === 'pending' || track.status === 'queued')
+    }
     return tracks.filter(track => track.status === statusFilter)
   }
 
@@ -62,7 +67,7 @@ function DownloadQueue() {
     // - Каждые 10 секунд если нет активных загрузок
     const interval = setInterval(() => {
       const hasActiveDownloads = tracks.some(t =>
-        t.status === 'downloading' || t.status === 'processing' || t.status === 'pending'
+        t.status === 'downloading' || t.status === 'processing' || t.status === 'pending' || t.status === 'queued'
       )
 
       // Обновляем только если есть активные загрузки или это первая загрузка
@@ -130,6 +135,7 @@ function DownloadQueue() {
           completedInQueue: data.completed,
           downloadingInQueue: data.downloading,
           pendingInQueue: data.pending,
+          queuedInQueue: data.queued,
           errorsInQueue: data.errors,
           totalDownloaded: data.completed, // Используем completed как totalDownloaded
           totalSizeMB: 0, // Пока не реализовано
@@ -171,6 +177,28 @@ function DownloadQueue() {
       }
     } catch (error) {
       console.error('Ошибка изменения состояния паузы:', error)
+    }
+  }
+
+  const restartWorker = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/queue/restart', {
+        method: 'POST'
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log('Воркер перезапущен:', result)
+
+        // Обновляем состояние
+        setIsPaused(false)
+        await loadQueue()
+        await loadProgress()
+      } else {
+        console.error('Ошибка перезапуска воркера')
+      }
+    } catch (error) {
+      console.error('Ошибка перезапуска воркера:', error)
     }
   }
 
@@ -400,6 +428,16 @@ function DownloadQueue() {
               <span>💾 Размер: <strong className="text-primary-600 dark:text-primary-400">{downloadStats.totalSizeGB.toFixed(1)} ГБ</strong></span>
             </div>
           </div>
+
+          {/* Плашка статуса */}
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg p-4 border-l-4 border-purple-500">
+            <div className="text-xs uppercase tracking-wide text-purple-700 dark:text-purple-400 font-semibold mb-1">
+              Статус
+            </div>
+            <div className="text-lg font-bold text-purple-900 dark:text-purple-200">
+              {progressData.is_active ? (isPaused ? '⏸️ Пауза' : '▶️ Работает') : '⏹️ Остановлен'}
+            </div>
+          </div>
         </div>
 
         {/* Индикатор активного фильтра */}
@@ -435,79 +473,82 @@ function DownloadQueue() {
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
             📊 Статистика
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-6 gap-3">
             {/* Ожидает */}
             <div
-              className={`bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 rounded-lg p-4 border-l-4 border-yellow-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'pending' ? 'ring-2 ring-yellow-400 shadow-lg' : ''}`}
+              className={`bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 rounded-lg p-3 border-l-4 border-yellow-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'pending' ? 'ring-2 ring-yellow-400 shadow-lg' : ''}`}
               onClick={() => setStatusFilter(statusFilter === 'pending' ? null : 'pending')}
             >
               <div className="text-xs uppercase tracking-wide text-yellow-700 dark:text-yellow-400 font-semibold mb-1">
                 Ожидает
               </div>
-              <div className="text-3xl font-bold text-yellow-900 dark:text-yellow-200">
+              <div className="text-2xl font-bold text-yellow-900 dark:text-yellow-200">
                 {downloadStats.pendingInQueue}
+              </div>
+            </div>
+
+            {/* В очереди */}
+            <div
+              className={`bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-lg p-3 border-l-4 border-orange-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'queued' ? 'ring-2 ring-orange-400 shadow-lg' : ''}`}
+              onClick={() => setStatusFilter(statusFilter === 'queued' ? null : 'queued')}
+            >
+              <div className="text-xs uppercase tracking-wide text-orange-700 dark:text-orange-400 font-semibold mb-1">
+                В очереди
+              </div>
+              <div className="text-2xl font-bold text-orange-900 dark:text-orange-200">
+                {downloadStats.queuedInQueue}
               </div>
             </div>
 
             {/* Скачивается */}
             <div
-              className={`bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-4 border-l-4 border-blue-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'downloading' ? 'ring-2 ring-blue-400 shadow-lg' : ''}`}
+              className={`bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-3 border-l-4 border-blue-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'downloading' ? 'ring-2 ring-blue-400 shadow-lg' : ''}`}
               onClick={() => setStatusFilter(statusFilter === 'downloading' ? null : 'downloading')}
             >
               <div className="text-xs uppercase tracking-wide text-blue-700 dark:text-blue-400 font-semibold mb-1">
                 Скачивается
               </div>
-              <div className="text-3xl font-bold text-blue-900 dark:text-blue-200">
+              <div className="text-2xl font-bold text-blue-900 dark:text-blue-200">
                 {downloadStats.downloadingInQueue}
               </div>
             </div>
 
             {/* Завершено */}
             <div
-              className={`bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg p-4 border-l-4 border-green-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'completed' ? 'ring-2 ring-green-400 shadow-lg' : ''}`}
+              className={`bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg p-3 border-l-4 border-green-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'completed' ? 'ring-2 ring-green-400 shadow-lg' : ''}`}
               onClick={() => setStatusFilter(statusFilter === 'completed' ? null : 'completed')}
             >
               <div className="text-xs uppercase tracking-wide text-green-700 dark:text-green-400 font-semibold mb-1">
                 Завершено
               </div>
-              <div className="text-3xl font-bold text-green-900 dark:text-green-200">
+              <div className="text-2xl font-bold text-green-900 dark:text-green-200">
                 {downloadStats.completedInQueue}
               </div>
             </div>
 
             {/* Ошибки */}
             <div
-              className={`bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-lg p-4 border-l-4 border-red-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'error' ? 'ring-2 ring-red-400 shadow-lg' : ''}`}
+              className={`bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-lg p-3 border-l-4 border-red-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'error' ? 'ring-2 ring-red-400 shadow-lg' : ''}`}
               onClick={() => setStatusFilter(statusFilter === 'error' ? null : 'error')}
             >
               <div className="text-xs uppercase tracking-wide text-red-700 dark:text-red-400 font-semibold mb-1">
                 Ошибки
               </div>
-              <div className="text-3xl font-bold text-red-900 dark:text-red-200">
+              <div className="text-2xl font-bold text-red-900 dark:text-red-200">
                 {downloadStats.errorsInQueue}
               </div>
             </div>
 
             {/* Всего */}
             <div
-              className={`bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900/20 dark:to-gray-800/20 rounded-lg p-4 border-l-4 border-gray-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === null ? 'ring-2 ring-gray-400 shadow-lg' : ''}`}
+              className={`bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900/20 dark:to-gray-800/20 rounded-lg p-3 border-l-4 border-gray-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === null ? 'ring-2 ring-gray-400 shadow-lg' : ''}`}
               onClick={() => setStatusFilter(null)}
             >
               <div className="text-xs uppercase tracking-wide text-gray-700 dark:text-gray-400 font-semibold mb-1">
                 Всего
               </div>
-              <div className="text-3xl font-bold text-gray-900 dark:text-gray-200">
+              <div className="text-2xl font-bold text-gray-900 dark:text-gray-200">
                 {downloadStats.totalInQueue}
-              </div>
-            </div>
-
-            {/* Статус */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg p-4 border-l-4 border-purple-500">
-              <div className="text-xs uppercase tracking-wide text-purple-700 dark:text-purple-400 font-semibold mb-1">
-                Статус
-              </div>
-              <div className="text-lg font-bold text-purple-900 dark:text-purple-200">
-                {progressData.is_active ? (isPaused ? '⏸️ Пауза' : '▶️ Работает') : '⏹️ Остановлен'}
               </div>
             </div>
           </div>
@@ -518,7 +559,7 @@ function DownloadQueue() {
           overallProgress={progressData.overall_progress}
           overallTotal={progressData.overall_total}
           currentProgress={progressData.current_progress}
-          currentFileName={progressData.current_track || undefined}
+          currentFileName={undefined} // Убираем название трека из верхнего статус-бара
           currentStatus={progressData.current_status || undefined}
           isActive={progressData.is_active}
         />
@@ -569,7 +610,8 @@ function DownloadQueue() {
               Добавить тестовые треки
             </Button>
           )}
-          {downloadStats.pendingInQueue > 0 && (
+          {/* Показываем кнопку запуска только если нет активных загрузок */}
+          {(downloadStats.pendingInQueue > 0 || downloadStats.queuedInQueue > 0) && downloadStats.downloadingInQueue === 0 && !progressData.is_active && (
             <Button
               variant="primary"
               onClick={startDownloadQueue}
@@ -577,19 +619,32 @@ function DownloadQueue() {
               icon={Play}
               className="text-lg font-bold shadow-lg hover:shadow-xl transition-all animate-pulse"
             >
-              🚀 Запустить загрузку ({downloadStats.pendingInQueue})
+              🚀 Запустить загрузку ({downloadStats.pendingInQueue + downloadStats.queuedInQueue})
             </Button>
           )}
-          {(downloadStats.downloadingInQueue > 0 || downloadStats.pendingInQueue > 0) && (
-            <Button
-              variant={isPaused ? "success" : "warning"}
-              onClick={togglePause}
-              icon={isPaused ? Play : Pause}
-              size="lg"
-              className="text-lg font-bold shadow-lg hover:shadow-xl transition-all"
-            >
-              {isPaused ? '▶️ Возобновить загрузку' : '⏸️ Приостановить загрузку'}
-            </Button>
+          {/* Показываем кнопку паузы/возобновления только если есть активные загрузки */}
+          {(downloadStats.downloadingInQueue > 0 || downloadStats.queuedInQueue > 0 || progressData.is_active) && (
+            <div className="flex gap-3">
+              <Button
+                variant={isPaused ? "success" : "warning"}
+                onClick={togglePause}
+                icon={isPaused ? Play : Pause}
+                size="lg"
+                className="text-lg font-bold shadow-lg hover:shadow-xl transition-all"
+              >
+                {isPaused ? '▶️ Возобновить загрузку' : '⏸️ Приостановить загрузку'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={restartWorker}
+                icon={RefreshCw}
+                size="lg"
+                className="text-lg font-bold shadow-lg hover:shadow-xl transition-all"
+                title="Принудительно перезапустить воркер загрузки"
+              >
+                🔄 Перезапустить
+              </Button>
+            </div>
           )}
           {downloadStats.completedInQueue > 0 && (
             <Button
