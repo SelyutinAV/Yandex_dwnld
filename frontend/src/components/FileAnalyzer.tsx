@@ -358,7 +358,8 @@ function FileAnalyzer() {
                     className="w-full h-full object-cover"
                     onError={(e) => {
                       e.currentTarget.style.display = 'none'
-                      e.currentTarget.nextElementSibling.style.display = 'flex'
+                      const nextEl = e.currentTarget.nextElementSibling as HTMLElement | null
+                      if (nextEl) nextEl.style.display = 'flex'
                     }}
                   />
                   <FileAudio

@@ -709,16 +709,46 @@ class YandexMusicClient:
             except Exception as e:
                 download_logger.warning(f"⚠️  Не удалось получить прямую ссылку для логирования: {e}")
             
-            # Формируем имя файла
+            # Формируем имя файла с правильным расширением
             artist = track.artists[0].name if track.artists else 'Unknown'
             title = track.title
-            extension = selected_info.codec
+            
+            # Определяем расширение файла в зависимости от кодека
+            if selected_info.codec in ['flac', 'flac-mp4']:
+                extension = 'flac'
+            elif selected_info.codec in ['aac', 'he-aac']:
+                extension = 'aac'
+            else:
+                extension = 'mp3'
             
             filename = f"{artist} - {title}.{extension}"
-            # Удаляем недопустимые символы
+            
+            # Удаляем недопустимые символы ИЗ filename
             filename = "".join(c for c in filename if c.isalnum() or c in (' ', '-', '_', '.'))
             
-            filepath = os.path.join(output_path, filename)
+            # ВАЖНО: если output_path был для FLAC, но выбран MP3/AAC - обновляем путь
+            import os
+            download_logger.debug(f"🔍 Проверка fallback: quality={quality}, extension={extension}")
+            if quality == 'lossless' and extension != 'flac':
+                download_logger.info(f"🔄 FLAC недоступен, будет загружен {extension.upper()}")
+                download_logger.debug(f"   📂 Исходный output_path: {output_path}")
+                download_logger.debug(f"   📄 Новое имя файла: {filename}")
+                # Заменяем расширение в output_path
+                output_dir = os.path.dirname(output_path)
+                output_path = os.path.join(output_dir, filename)
+                download_logger.debug(f"   📂 Новый output_path: {output_path}")
+            else:
+                download_logger.debug(f"   ⏭️  Fallback не нужен (extension={extension})")
+            
+            # Используем обновленный output_path (который уже содержит правильный путь)
+            filepath = output_path
+            
+            # Убеждаемся что директория существует
+            file_dir = os.path.dirname(filepath)
+            if not os.path.exists(file_dir):
+                os.makedirs(file_dir, exist_ok=True)
+                download_logger.debug(f"📁 Создана директория: {file_dir}")
+            
             download_logger.info(f"💾 Сохраняем в: {filepath}")
             
             # Скачиваем файл с отслеживанием прогресса
@@ -827,11 +857,8 @@ class YandexMusicClient:
                         downloaded += len(chunk)
                         
                         # Вызываем callback с прогрессом
-                        if total_size > 0:
-                            progress_percent = (downloaded / total_size) * 100
-                            progress_callback(downloaded, total_size, progress_percent)
-                        else:
-                            progress_callback(downloaded, 0, 0)
+                        if progress_callback:
+                            progress_callback(downloaded, total_size)
                             
         except Exception as e:
             download_logger.error(f"Ошибка скачивания с прогрессом: {e}")

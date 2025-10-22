@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 import os
 import asyncio
 import logging
@@ -18,6 +18,7 @@ from yandex_client import YandexMusicClient
 from downloader import DownloadManager
 from db_manager import db_manager
 from logger_config import setup_logging, get_logger
+from download_queue_manager import DownloadQueueManager
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -29,7 +30,8 @@ logger = get_logger(__name__)
 # Глобальные переменные
 yandex_client: Optional[YandexMusicClient] = None
 download_manager: Optional[DownloadManager] = None
-download_worker_running = False  # Флаг работы воркера загрузок
+download_queue_manager = None  # Новый менеджер очереди
+download_worker_running = False  # Флаг работы воркера загрузок (deprecated)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -137,7 +139,7 @@ async def process_download_queue():
                 cursor.execute("""
                     SELECT id, track_id, title, artist, album, quality
                     FROM download_queue
-                    WHERE status = 'queued'
+                    WHERE status IN ('queued', 'pending')
                     ORDER BY created_at ASC
                     LIMIT 1
                 """)
@@ -279,7 +281,17 @@ def update_yandex_client(token: Optional[str] = None):
                 )
                 
                 download_manager = DownloadManager(yandex_client, download_path)
+                
+                # Инициализируем новый менеджер очереди
+                global download_queue_manager
+                download_queue_manager = DownloadQueueManager(
+                    db_manager=db_manager,
+                    yandex_client=yandex_client,
+                    download_path=download_path
+                )
+                
                 print(f"Клиент Яндекс.Музыка успешно инициализирован")
+                print(f"✅ Менеджер очереди загрузок инициализирован")
             else:
                 print(f"Не удалось подключиться к Яндекс.Музыке с токеном")
                 yandex_client = None
@@ -821,7 +833,7 @@ async def start_download_queue():
         # Проверяем есть ли треки в очереди
         with db_manager.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status = 'queued'")
+            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status IN ('queued', 'pending')")
             queued_count = cursor.fetchone()[0]
         
         # Запускаем фоновую задачу для обработки очереди
@@ -852,14 +864,28 @@ async def download_playlist(request: DownloadRequest):
 
 @app.get("/api/download/queue")
 async def get_download_queue():
-    """Получить очередь загрузок"""
+    """Получить очередь загрузок из БД"""
     try:
-        if not download_manager:
-            raise HTTPException(status_code=400, detail="Менеджер загрузок не инициализирован")
-        
-        queue = download_manager.get_queue()
-        return {"queue": queue}
+        with db_manager.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, track_id, title, artist, album, status, progress, 
+                       quality, error_message, created_at, updated_at
+                FROM download_queue
+                ORDER BY created_at DESC
+            """)
+            
+            columns = [description[0] for description in cursor.description]
+            rows = cursor.fetchall()
+            
+            queue = []
+            for row in rows:
+                item = dict(zip(columns, row))
+                queue.append(item)
+            
+            return {"queue": queue}
     except Exception as e:
+        logger.error(f"Ошибка получения очереди: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/stats")
@@ -1599,6 +1625,14 @@ class AddToQueueRequest(BaseModel):
     album: str = None
     quality: str = "lossless"
 
+# Новые модели для обновлённой системы очереди
+class AddTracksToQueueRequest(BaseModel):
+    tracks: List[Dict]  # [{id, title, artist, album}, ...]
+    quality: str = "lossless"
+
+class TrackIdRequest(BaseModel):
+    track_id: str
+
 @app.post("/api/downloads/add-to-queue")
 async def add_to_queue(request: AddToQueueRequest):
     """Добавить трек в очередь загрузок"""
@@ -1630,6 +1664,135 @@ async def add_to_queue(request: AddToQueueRequest):
             
         return {"status": "success", "message": "Трек добавлен в очередь"}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# НОВЫЕ API ЭНДПОИНТЫ ДЛЯ ОБНОВЛЁННОЙ СИСТЕМЫ ОЧЕРЕДИ
+# ============================================================================
+
+@app.post("/api/queue/add-tracks")
+async def queue_add_tracks(request: AddTracksToQueueRequest):
+    """Добавить треки в очередь загрузки"""
+    if not download_queue_manager:
+        raise HTTPException(status_code=400, detail="Менеджер очереди не инициализирован")
+    
+    try:
+        result = download_queue_manager.add_tracks(request.tracks, request.quality)
+        return {
+            "status": "success",
+            "added": result['added'],
+            "skipped": result['skipped'],
+            "duplicates": result['duplicates']
+        }
+    except Exception as e:
+        logger.error(f"Ошибка добавления треков в очередь: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/queue/list")
+async def queue_list(limit: Optional[int] = None):
+    """Получить список треков в очереди"""
+    if not download_queue_manager:
+        raise HTTPException(status_code=400, detail="Менеджер очереди не инициализирован")
+    
+    try:
+        queue = download_queue_manager.get_queue(limit)
+        return {"queue": queue}
+    except Exception as e:
+        logger.error(f"Ошибка получения очереди: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/queue/stats")
+async def queue_stats():
+    """Получить статистику очереди"""
+    if not download_queue_manager:
+        raise HTTPException(status_code=400, detail="Менеджер очереди не инициализирован")
+    
+    try:
+        stats = download_queue_manager.get_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Ошибка получения статистики: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/queue/start")
+async def queue_start():
+    """Запустить обработку очереди"""
+    if not download_queue_manager:
+        raise HTTPException(status_code=400, detail="Менеджер очереди не инициализирован")
+    
+    try:
+        result = await download_queue_manager.start()
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка запуска очереди: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/queue/pause")
+async def queue_pause():
+    """Приостановить загрузку"""
+    if not download_queue_manager:
+        raise HTTPException(status_code=400, detail="Менеджер очереди не инициализирован")
+    
+    try:
+        result = download_queue_manager.pause()
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка паузы: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/queue/resume")
+async def queue_resume():
+    """Возобновить загрузку"""
+    if not download_queue_manager:
+        raise HTTPException(status_code=400, detail="Менеджер очереди не инициализирован")
+    
+    try:
+        result = download_queue_manager.resume()
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка возобновления: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/queue/stop")
+async def queue_stop():
+    """Остановить загрузку"""
+    if not download_queue_manager:
+        raise HTTPException(status_code=400, detail="Менеджер очереди не инициализирован")
+    
+    try:
+        result = download_queue_manager.stop()
+        return result
+    except Exception as e:
+        logger.error(f"Ошибка остановки: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/queue/clear-completed")
+async def queue_clear_completed():
+    """Удалить завершённые треки из очереди"""
+    if not download_queue_manager:
+        raise HTTPException(status_code=400, detail="Менеджер очереди не инициализирован")
+    
+    try:
+        deleted = download_queue_manager.clear_completed()
+        return {"status": "success", "deleted": deleted}
+    except Exception as e:
+        logger.error(f"Ошибка очистки: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/queue/track/{track_id}")
+async def queue_remove_track(track_id: str):
+    """Удалить трек из очереди"""
+    if not download_queue_manager:
+        raise HTTPException(status_code=400, detail="Менеджер очереди не инициализирован")
+    
+    try:
+        result = download_queue_manager.remove_track(track_id)
+        if result:
+            return {"status": "success", "message": "Трек удалён"}
+        else:
+            return {"status": "error", "message": "Трек не найден или не может быть удалён"}
+    except Exception as e:
+        logger.error(f"Ошибка удаления трека: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

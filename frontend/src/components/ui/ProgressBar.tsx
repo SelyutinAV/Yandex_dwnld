@@ -12,7 +12,7 @@ interface ProgressBarProps {
 export const ProgressBar: React.FC<ProgressBarProps> = ({
     overallProgress,
     overallTotal,
-    currentProgress = 0,
+    currentProgress: _currentProgress = 0,
     currentFileName = '',
     currentStatus = '',
     isActive

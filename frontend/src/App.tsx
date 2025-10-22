@@ -24,12 +24,6 @@ function AppContent() {
               <h1 className="text-3xl font-bold">Yandex Music Downloader</h1>
             </div>
             <div className="flex items-center gap-4">
-              {state.isDownloading && (
-                <div className="flex items-center gap-2 text-sm bg-white/20 px-3 py-1 rounded-lg">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>Скачивание: {state.downloadProgress}%</span>
-                </div>
-              )}
               <StatusBadge
                 status={isConnected ? 'connected' : 'disconnected'}
               >

@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowRight, CheckCircle, Download, Pause, Play, RotateCcw, Trash2, X } from 'lucide-react'
+import { AlertCircle, CheckCircle, Download, Pause, Play, RotateCcw, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAppContext } from '../contexts/AppContext'
 import { Button } from './ui/Button'
@@ -43,7 +43,7 @@ function DownloadQueue() {
     current_status: null as string | null,
     current_progress: 0
   })
-  const { setDownloading, setDownloadProgress, triggerRefresh } = useAppContext()
+  const { triggerRefresh } = useAppContext()
 
   // Загружаем данные при монтировании компонента
   useEffect(() => {
@@ -87,17 +87,9 @@ function DownloadQueue() {
       setLoading(true)
     }
 
-    // Показываем индикатор "downloading" только если есть реально загружающиеся треки
-    const hasActiveDownloads = tracks.some(t => t.status === 'downloading')
-
-    if (hasActiveDownloads || initialLoad) {
-      setDownloading(true)
-    } else {
-      setDownloading(false)
-    }
-
     try {
-      const response = await fetch('http://localhost:8000/api/downloads/queue')
+      // Используем новый API эндпоинт
+      const response = await fetch('http://localhost:8000/api/queue/list')
 
       if (response.ok) {
         const data = await response.json()
@@ -107,15 +99,6 @@ function DownloadQueue() {
         if (JSON.stringify(tracks) !== JSON.stringify(newQueue)) {
           setTracks(newQueue)
         }
-
-        // Обновляем прогресс на основе статуса треков
-        const downloadingTracks = newQueue.filter((t: Track) => t.status === 'downloading') || []
-        if (downloadingTracks.length > 0) {
-          const avgProgress = downloadingTracks.reduce((sum: number, t: Track) => sum + t.progress, 0) / downloadingTracks.length
-          setDownloadProgress(Math.round(avgProgress))
-        } else {
-          setDownloadProgress(0)
-        }
       }
     } catch (error) {
       console.error('Ошибка загрузки очереди:', error)
@@ -124,17 +107,24 @@ function DownloadQueue() {
         setLoading(false)
         setInitialLoad(false)
       }
-      setDownloading(false)
     }
   }
 
   const loadPauseStatus = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/settings')
+      // Используем новый API для статистики
+      const response = await fetch('http://localhost:8000/api/queue/stats')
       if (response.ok) {
         const data = await response.json()
-        // Предполагаем что есть поле downloads_paused в настройках
-        setIsPaused(data.downloads_paused === true || data.downloads_paused === 'true')
+        setIsPaused(data.is_paused === true)
+        setProgressData({
+          is_active: data.is_running,
+          overall_progress: 0,
+          overall_total: 0,
+          current_track: data.current_track_id,
+          current_status: null,
+          current_progress: 0
+        })
       }
     } catch (error) {
       console.error('Ошибка загрузки состояния паузы:', error)
@@ -159,16 +149,15 @@ function DownloadQueue() {
 
   const togglePause = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/downloads/pause', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ paused: !isPaused })
+      // Используем новые эндпоинты паузы/возобновления
+      const endpoint = isPaused ? '/api/queue/resume' : '/api/queue/pause'
+      const response = await fetch(`http://localhost:8000${endpoint}`, {
+        method: 'POST'
       })
 
       if (response.ok) {
         setIsPaused(!isPaused)
+        await loadQueue()
       } else {
         console.error('Ошибка изменения состояния паузы')
       }
@@ -179,7 +168,8 @@ function DownloadQueue() {
 
   const removeTrack = async (trackId: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/downloads/${trackId}`, {
+      // Используем новый эндпоинт удаления
+      const response = await fetch(`http://localhost:8000/api/queue/track/${trackId}`, {
         method: 'DELETE'
       })
 
@@ -247,13 +237,14 @@ function DownloadQueue() {
 
   const clearCompleted = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/downloads/clear-completed', {
+      // Используем новый эндпоинт
+      const response = await fetch('http://localhost:8000/api/queue/clear-completed', {
         method: 'DELETE'
       })
 
       if (response.ok) {
         const data = await response.json()
-        console.log(data.message)
+        console.log(`Удалено ${data.deleted} треков`)
         // Обновляем очередь
         await loadQueue()
       } else {
@@ -329,11 +320,6 @@ function DownloadQueue() {
     }
   }
 
-  const formatFileSize = (mb?: number) => {
-    if (!mb) return '—'
-    return `${mb.toFixed(1)} МБ`
-  }
-
   const getStatusText = (track: Track) => {
     switch (track.status) {
       case 'completed':
@@ -379,14 +365,19 @@ function DownloadQueue() {
 
   const startDownloadQueue = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/download/queue/start', {
+      // Используем новый эндпоинт
+      const response = await fetch('http://localhost:8000/api/queue/start', {
         method: 'POST'
       })
 
       if (response.ok) {
         const data = await response.json()
-        console.log(data.message)
-        alert(`✅ Запущена загрузка ${data.count} треков!`)
+        if (data.status === 'started') {
+          console.log(`Запущена загрузка ${data.pending} треков`)
+          alert(`✅ Запущена загрузка ${data.pending} треков!`)
+        } else if (data.status === 'empty') {
+          alert('⚠️ Нет треков для загрузки')
+        }
         await loadQueue()
       } else {
         console.error('Ошибка запуска загрузки')
@@ -398,105 +389,11 @@ function DownloadQueue() {
     }
   }
 
-  const movePendingToQueue = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/downloads/change-status', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from_status: 'pending',
-          to_status: 'queued',
-          count: 10  // Переводим по 10 треков за раз
-        })
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log(data.message)
-        alert(`✅ ${data.message}`)
-        await loadQueue()
-        
-        // Автоматически запускаем загрузку после переброса
-        setTimeout(async () => {
-          await startDownloadQueue()
-        }, 1000)
-      } else {
-        console.error('Ошибка переброса треков')
-        alert('❌ Ошибка переброса треков')
-      }
-    } catch (error) {
-      console.error('Ошибка переброса треков:', error)
-      alert('❌ Ошибка переброса треков')
-    }
-  }
-
-  const clearQueuedTracks = async () => {
-    if (!confirm(`Вы уверены, что хотите удалить ${stats.queued} подготовленных треков из очереди?`)) {
-      return
-    }
-
-    try {
-      const response = await fetch('http://localhost:8000/api/downloads/clear-queued', {
-        method: 'DELETE'
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log(data.message)
-        await loadQueue()
-      } else {
-        console.error('Ошибка очистки подготовленных треков')
-      }
-    } catch (error) {
-      console.error('Ошибка очистки подготовленных треков:', error)
-    }
-  }
 
   return (
     <>
       <div className="w-full">
-        {/* Уведомление о подготовленных треках */}
-        {stats.queued > 0 && (
-          <Card className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-400 dark:border-blue-600">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-4">
-                <div className="text-5xl animate-bounce">🎵</div>
-                <div>
-                  <h3 className="text-2xl font-bold text-blue-900 dark:text-blue-100 mb-1">
-                    Готово к загрузке!
-                  </h3>
-                  <p className="text-blue-700 dark:text-blue-300">
-                    {stats.queued} {stats.queued === 1 ? 'трек' : stats.queued < 5 ? 'трека' : 'треков'} подготовлено к загрузке.
-                    Нажмите кнопку ниже, чтобы начать скачивание.
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <Button
-                  variant="primary"
-                  onClick={startDownloadQueue}
-                  size="lg"
-                  icon={Play}
-                  className="text-xl font-bold shadow-xl hover:shadow-2xl transition-all px-8 py-4"
-                >
-                  🚀 Запустить загрузку ({stats.queued})
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={clearQueuedTracks}
-                  size="md"
-                  icon={Trash2}
-                >
-                  Очистить
-                </Button>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
+        <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Очередь загрузок</h2>
             <div className="mt-2 flex gap-4 text-sm text-gray-600 dark:text-gray-400">
@@ -504,48 +401,83 @@ function DownloadQueue() {
               <span>💾 Размер: <strong className="text-primary-600 dark:text-primary-400">{downloadStats.totalSizeGB.toFixed(1)} ГБ</strong></span>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex gap-3 text-sm">
-              <span className="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg">
-                В очереди: {stats.total}
-              </span>
-              <span className="px-3 py-1 bg-success-100 dark:bg-success-900/30 text-success-700 dark:text-success-400 rounded-lg">
-                Завершено: {stats.completed}
-              </span>
-              <span className="px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-lg">
-                Загружается: {stats.downloading}
-              </span>
-              {stats.processing > 0 && (
-                <span className="px-3 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-lg">
-                  Обрабатывается: {stats.processing}
-                </span>
-              )}
-              {stats.queued > 0 && (
-                <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-lg">
-                  Подготовлено: {stats.queued}
-                </span>
-              )}
-              {stats.pending > 0 && (
-                <span className="px-3 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-lg">
-                  В ожидании: {stats.pending}
-                </span>
-              )}
-              {stats.errors > 0 && (
-                <span className="px-3 py-1 bg-error-100 dark:bg-error-900/30 text-error-700 dark:text-error-400 rounded-lg">
-                  Ошибки: {stats.errors}
-                </span>
-              )}
+        </div>
+
+        {/* Красивая статистика */}
+        <Card className="mb-6 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+            📊 Статистика
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+            {/* Ожидает */}
+            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 rounded-lg p-4 border-l-4 border-yellow-500">
+              <div className="text-xs uppercase tracking-wide text-yellow-700 dark:text-yellow-400 font-semibold mb-1">
+                Ожидает
+              </div>
+              <div className="text-3xl font-bold text-yellow-900 dark:text-yellow-200">
+                {stats.pending}
+              </div>
+            </div>
+
+            {/* Скачивается */}
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-4 border-l-4 border-blue-500">
+              <div className="text-xs uppercase tracking-wide text-blue-700 dark:text-blue-400 font-semibold mb-1">
+                Скачивается
+              </div>
+              <div className="text-3xl font-bold text-blue-900 dark:text-blue-200">
+                {stats.downloading}
+              </div>
+            </div>
+
+            {/* Завершено */}
+            <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg p-4 border-l-4 border-green-500">
+              <div className="text-xs uppercase tracking-wide text-green-700 dark:text-green-400 font-semibold mb-1">
+                Завершено
+              </div>
+              <div className="text-3xl font-bold text-green-900 dark:text-green-200">
+                {stats.completed}
+              </div>
+            </div>
+
+            {/* Ошибки */}
+            <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-lg p-4 border-l-4 border-red-500">
+              <div className="text-xs uppercase tracking-wide text-red-700 dark:text-red-400 font-semibold mb-1">
+                Ошибки
+              </div>
+              <div className="text-3xl font-bold text-red-900 dark:text-red-200">
+                {stats.errors}
+              </div>
+            </div>
+
+            {/* Всего */}
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900/20 dark:to-gray-800/20 rounded-lg p-4 border-l-4 border-gray-500">
+              <div className="text-xs uppercase tracking-wide text-gray-700 dark:text-gray-400 font-semibold mb-1">
+                Всего
+              </div>
+              <div className="text-3xl font-bold text-gray-900 dark:text-gray-200">
+                {stats.total}
+              </div>
+            </div>
+
+            {/* Статус */}
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg p-4 border-l-4 border-purple-500">
+              <div className="text-xs uppercase tracking-wide text-purple-700 dark:text-purple-400 font-semibold mb-1">
+                Статус
+              </div>
+              <div className="text-lg font-bold text-purple-900 dark:text-purple-200">
+                {progressData.is_active ? (isPaused ? '⏸️ Пауза' : '▶️ Работает') : '⏹️ Остановлен'}
+              </div>
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* Прогресс-бар загрузки */}
         <ProgressBar
           overallProgress={progressData.overall_progress}
           overallTotal={progressData.overall_total}
           currentProgress={progressData.current_progress}
-          currentFileName={progressData.current_track}
-          currentStatus={progressData.current_status}
+          currentFileName={progressData.current_track || undefined}
+          currentStatus={progressData.current_status || undefined}
           isActive={progressData.is_active}
         />
 
@@ -595,36 +527,15 @@ function DownloadQueue() {
               Добавить тестовые треки
             </Button>
           )}
-          {stats.queued > 0 && (
-            <>
-              <Button
-                variant="primary"
-                onClick={startDownloadQueue}
-                size="md"
-                icon={Play}
-                className="text-lg font-bold shadow-lg hover:shadow-xl transition-all animate-pulse"
-              >
-                🚀 Запустить загрузку ({stats.queued})
-              </Button>
-              <Button
-                variant="error"
-                onClick={clearQueuedTracks}
-                size="sm"
-                icon={Trash2}
-              >
-                Очистить подготовленные ({stats.queued})
-              </Button>
-            </>
-          )}
           {stats.pending > 0 && (
             <Button
-              variant="warning"
-              onClick={movePendingToQueue}
+              variant="primary"
+              onClick={startDownloadQueue}
               size="md"
-              icon={ArrowRight}
-              className="text-lg font-bold shadow-lg hover:shadow-xl transition-all"
+              icon={Play}
+              className="text-lg font-bold shadow-lg hover:shadow-xl transition-all animate-pulse"
             >
-              🔄 Перебросить из ожидания ({stats.pending})
+              🚀 Запустить загрузку ({stats.pending})
             </Button>
           )}
           {(stats.downloading > 0 || stats.processing > 0 || stats.pending > 0) && (
