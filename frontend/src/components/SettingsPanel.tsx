@@ -110,6 +110,8 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   // Состояние для настроек
   const [downloadPath, setDownloadPath] = useState('/home/urch/Music/Yandex')
   const [quality, setQuality] = useState('lossless')
+  const [fileTemplate, setFileTemplate] = useState('{artist} - {title}')
+  const [folderStructure, setFolderStructure] = useState('{artist}/{album}')
 
   // Состояние для логов
   const [logs, setLogs] = useState<string[]>([])
@@ -170,6 +172,8 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
         const settings = await response.json()
         setDownloadPath(settings.downloadPath || '/home/urch/Music/Yandex')
         setQuality(settings.quality || 'lossless')
+        setFileTemplate(settings.fileTemplate || '{artist} - {title}')
+        setFolderStructure(settings.folderStructure || '{artist}/{album}')
 
         // Проверяем соединение по наличию токена
         if (settings.token) {
@@ -273,7 +277,9 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
         body: JSON.stringify({
           token: currentSettings.token || '', // Передаем текущий токен
           downloadPath: downloadPath,
-          quality: quality
+          quality: quality,
+          fileTemplate: fileTemplate,
+          folderStructure: folderStructure
         })
       })
 
@@ -602,25 +608,93 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
               <div className="space-y-4 pt-6 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-3">
                   <FileText size={20} className="text-primary-500" />
-                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Структура сохранения</h4>
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Шаблон имени файла</h4>
+                </div>
+                <Input
+                  label="Шаблон имени файла"
+                  value={fileTemplate}
+                  onChange={setFileTemplate}
+                  placeholder="{artist} - {title}"
+                />
+                <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Пример результата:</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                    {fileTemplate.replace('{artist}', 'Radiohead').replace('{title}', 'Creep').replace('{album}', 'Pablo Honey').replace('{year}', '1993').replace('{track}', '01').replace('{playlist}', 'Мой плейлист')}.flac
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Доступные переменные:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['{artist}', '{title}', '{album}', '{year}', '{track}', '{playlist}'].map((variable) => (
+                      <button
+                        key={variable}
+                        onClick={() => setFileTemplate(prev => prev + variable)}
+                        className="px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-lg text-sm font-mono hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-colors cursor-pointer"
+                        title={`Добавить ${variable} в шаблон`}
+                      >
+                        {variable}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-500">
+                    Нажмите на переменную, чтобы добавить её в шаблон
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center gap-3">
+                  <FolderOpen size={20} className="text-primary-500" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Структура папок</h4>
+                </div>
+                <Input
+                  label="Структура папок"
+                  value={folderStructure}
+                  onChange={setFolderStructure}
+                  placeholder="{artist}/{album}"
+                />
+                <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Пример структуры:</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                    {downloadPath}/{folderStructure.replace('{artist}', 'Radiohead').replace('{album}', 'Pablo Honey').replace('{playlist}', 'Мой плейлист')}/
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Доступные переменные:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['{artist}', '{album}', '{year}', '{playlist}'].map((variable) => (
+                      <button
+                        key={variable}
+                        onClick={() => setFolderStructure(prev => prev + variable)}
+                        className="px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-lg text-sm font-mono hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-colors cursor-pointer"
+                        title={`Добавить ${variable} в структуру папок`}
+                      >
+                        {variable}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-500">
+                    Нажмите на переменную, чтобы добавить её в структуру папок
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center gap-3">
+                  <Info size={20} className="text-primary-500" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Предварительный просмотр</h4>
                 </div>
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
                   <div className="space-y-3">
                     <div>
-                      <p className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">📁 Структура папок:</p>
+                      <p className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">📁 Полный путь:</p>
                       <p className="text-sm text-blue-700 dark:text-blue-300 font-mono bg-white/50 dark:bg-black/20 p-2 rounded">
-                        {downloadPath}/<span className="text-primary-600 dark:text-primary-400">Исполнитель</span>/<span className="text-secondary-600 dark:text-secondary-400">Альбом</span>/
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">🎵 Формат имени файла:</p>
-                      <p className="text-sm text-blue-700 dark:text-blue-300 font-mono bg-white/50 dark:bg-black/20 p-2 rounded">
-                        <span className="text-primary-600 dark:text-primary-400">Исполнитель</span> - <span className="text-secondary-600 dark:text-secondary-400">Название</span>.<span className="text-green-600 dark:text-green-400">flac/mp3</span>
+                        {downloadPath}/{folderStructure.replace('{artist}', 'Pink Floyd').replace('{album}', 'The Dark Side of the Moon').replace('{playlist}', 'Мой плейлист')}/{fileTemplate.replace('{artist}', 'Pink Floyd').replace('{title}', 'Money').replace('{album}', 'The Dark Side of the Moon').replace('{year}', '1973').replace('{track}', '06').replace('{playlist}', 'Мой плейлист')}.flac
                       </p>
                     </div>
                     <div className="pt-2">
                       <p className="text-xs text-blue-600 dark:text-blue-400">
-                        <strong>Пример:</strong> {downloadPath}/Pink Floyd/The Dark Side of the Moon/Pink Floyd - Money.flac
+                        <strong>Пример:</strong> Pink Floyd - Money.flac в папке Pink Floyd/The Dark Side of the Moon/
                       </p>
                     </div>
                   </div>

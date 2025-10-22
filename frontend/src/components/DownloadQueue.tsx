@@ -25,6 +25,7 @@ function DownloadQueue() {
   const [loading, setLoading] = useState(true)
   const [initialLoad, setInitialLoad] = useState(true)
   const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set())
+  const [statusFilter, setStatusFilter] = useState<string | null>(null) // Новое состояние для фильтра
   const [downloadStats, setDownloadStats] = useState({
     totalInQueue: 0,
     completedInQueue: 0,
@@ -44,6 +45,12 @@ function DownloadQueue() {
     current_progress: 0
   })
   const { triggerRefresh } = useAppContext()
+
+  // Функция для фильтрации треков по статусу
+  const getFilteredTracks = () => {
+    if (!statusFilter) return tracks
+    return tracks.filter(track => track.status === statusFilter)
+  }
 
   // Загружаем данные при монтировании компонента
   useEffect(() => {
@@ -110,12 +117,26 @@ function DownloadQueue() {
     }
   }
 
-  const loadPauseStatus = async () => {
+
+  const loadDownloadStats = async () => {
     try {
-      // Используем новый API для статистики
+      // Используем новый API для статистики очереди
       const response = await fetch('http://localhost:8000/api/queue/stats')
       if (response.ok) {
         const data = await response.json()
+        // Преобразуем данные в формат, ожидаемый компонентом
+        setDownloadStats({
+          totalInQueue: data.total,
+          completedInQueue: data.completed,
+          downloadingInQueue: data.downloading,
+          pendingInQueue: data.pending,
+          errorsInQueue: data.errors,
+          totalDownloaded: data.completed, // Используем completed как totalDownloaded
+          totalSizeMB: 0, // Пока не реализовано
+          totalSizeGB: 0  // Пока не реализовано
+        })
+
+        // Обновляем состояние паузы
         setIsPaused(data.is_paused === true)
         setProgressData({
           is_active: data.is_running,
@@ -126,22 +147,9 @@ function DownloadQueue() {
           current_progress: 0
         })
       }
-    } catch (error) {
-      console.error('Ошибка загрузки состояния паузы:', error)
-    }
-  }
 
-  const loadDownloadStats = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/downloads/stats')
-      if (response.ok) {
-        const data = await response.json()
-        setDownloadStats(data.summary)
-      }
-
-      // Также загружаем данные о прогрессе и состоянии паузы
+      // Также загружаем данные о прогрессе
       await loadProgress()
-      await loadPauseStatus()
     } catch (error) {
       console.error('Ошибка загрузки статистики:', error)
     }
@@ -353,15 +361,6 @@ function DownloadQueue() {
     }
   }
 
-  const stats = {
-    total: tracks.length,
-    completed: tracks.filter(t => t.status === 'completed').length,
-    downloading: tracks.filter(t => t.status === 'downloading').length,
-    processing: tracks.filter(t => t.status === 'processing').length,
-    pending: tracks.filter(t => t.status === 'pending').length,
-    queued: tracks.filter(t => t.status === 'queued').length,
-    errors: tracks.filter(t => t.status === 'error').length
-  }
 
   const startDownloadQueue = async () => {
     try {
@@ -403,6 +402,34 @@ function DownloadQueue() {
           </div>
         </div>
 
+        {/* Индикатор активного фильтра */}
+        {statusFilter && (
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                  🔍 Фильтр активен:
+                </span>
+                <span className="px-2 py-1 bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 rounded text-sm font-semibold">
+                  {statusFilter === 'pending' ? 'Ожидает' :
+                    statusFilter === 'downloading' ? 'Скачивается' :
+                      statusFilter === 'completed' ? 'Завершено' :
+                        statusFilter === 'error' ? 'Ошибки' : statusFilter}
+                </span>
+                <span className="text-sm text-blue-600 dark:text-blue-400">
+                  ({getFilteredTracks().length} из {tracks.length})
+                </span>
+              </div>
+              <button
+                onClick={() => setStatusFilter(null)}
+                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 text-sm font-medium"
+              >
+                ✕ Сбросить фильтр
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Красивая статистика */}
         <Card className="mb-6 p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
@@ -410,52 +437,67 @@ function DownloadQueue() {
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
             {/* Ожидает */}
-            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 rounded-lg p-4 border-l-4 border-yellow-500">
+            <div
+              className={`bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 rounded-lg p-4 border-l-4 border-yellow-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'pending' ? 'ring-2 ring-yellow-400 shadow-lg' : ''}`}
+              onClick={() => setStatusFilter(statusFilter === 'pending' ? null : 'pending')}
+            >
               <div className="text-xs uppercase tracking-wide text-yellow-700 dark:text-yellow-400 font-semibold mb-1">
                 Ожидает
               </div>
               <div className="text-3xl font-bold text-yellow-900 dark:text-yellow-200">
-                {stats.pending}
+                {downloadStats.pendingInQueue}
               </div>
             </div>
 
             {/* Скачивается */}
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-4 border-l-4 border-blue-500">
+            <div
+              className={`bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-4 border-l-4 border-blue-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'downloading' ? 'ring-2 ring-blue-400 shadow-lg' : ''}`}
+              onClick={() => setStatusFilter(statusFilter === 'downloading' ? null : 'downloading')}
+            >
               <div className="text-xs uppercase tracking-wide text-blue-700 dark:text-blue-400 font-semibold mb-1">
                 Скачивается
               </div>
               <div className="text-3xl font-bold text-blue-900 dark:text-blue-200">
-                {stats.downloading}
+                {downloadStats.downloadingInQueue}
               </div>
             </div>
 
             {/* Завершено */}
-            <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg p-4 border-l-4 border-green-500">
+            <div
+              className={`bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg p-4 border-l-4 border-green-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'completed' ? 'ring-2 ring-green-400 shadow-lg' : ''}`}
+              onClick={() => setStatusFilter(statusFilter === 'completed' ? null : 'completed')}
+            >
               <div className="text-xs uppercase tracking-wide text-green-700 dark:text-green-400 font-semibold mb-1">
                 Завершено
               </div>
               <div className="text-3xl font-bold text-green-900 dark:text-green-200">
-                {stats.completed}
+                {downloadStats.completedInQueue}
               </div>
             </div>
 
             {/* Ошибки */}
-            <div className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-lg p-4 border-l-4 border-red-500">
+            <div
+              className={`bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 rounded-lg p-4 border-l-4 border-red-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === 'error' ? 'ring-2 ring-red-400 shadow-lg' : ''}`}
+              onClick={() => setStatusFilter(statusFilter === 'error' ? null : 'error')}
+            >
               <div className="text-xs uppercase tracking-wide text-red-700 dark:text-red-400 font-semibold mb-1">
                 Ошибки
               </div>
               <div className="text-3xl font-bold text-red-900 dark:text-red-200">
-                {stats.errors}
+                {downloadStats.errorsInQueue}
               </div>
             </div>
 
             {/* Всего */}
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900/20 dark:to-gray-800/20 rounded-lg p-4 border-l-4 border-gray-500">
+            <div
+              className={`bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900/20 dark:to-gray-800/20 rounded-lg p-4 border-l-4 border-gray-500 cursor-pointer transition-all hover:shadow-lg hover:scale-105 ${statusFilter === null ? 'ring-2 ring-gray-400 shadow-lg' : ''}`}
+              onClick={() => setStatusFilter(null)}
+            >
               <div className="text-xs uppercase tracking-wide text-gray-700 dark:text-gray-400 font-semibold mb-1">
                 Всего
               </div>
               <div className="text-3xl font-bold text-gray-900 dark:text-gray-200">
-                {stats.total}
+                {downloadStats.totalInQueue}
               </div>
             </div>
 
@@ -527,7 +569,7 @@ function DownloadQueue() {
               Добавить тестовые треки
             </Button>
           )}
-          {stats.pending > 0 && (
+          {downloadStats.pendingInQueue > 0 && (
             <Button
               variant="primary"
               onClick={startDownloadQueue}
@@ -535,10 +577,10 @@ function DownloadQueue() {
               icon={Play}
               className="text-lg font-bold shadow-lg hover:shadow-xl transition-all animate-pulse"
             >
-              🚀 Запустить загрузку ({stats.pending})
+              🚀 Запустить загрузку ({downloadStats.pendingInQueue})
             </Button>
           )}
-          {(stats.downloading > 0 || stats.processing > 0 || stats.pending > 0) && (
+          {(downloadStats.downloadingInQueue > 0 || downloadStats.pendingInQueue > 0) && (
             <Button
               variant={isPaused ? "success" : "warning"}
               onClick={togglePause}
@@ -549,14 +591,14 @@ function DownloadQueue() {
               {isPaused ? '▶️ Возобновить загрузку' : '⏸️ Приостановить загрузку'}
             </Button>
           )}
-          {stats.completed > 0 && (
+          {downloadStats.completedInQueue > 0 && (
             <Button
               variant="secondary"
               onClick={clearCompleted}
               size="sm"
               icon={Trash2}
             >
-              Очистить завершенные ({stats.completed})
+              Очистить завершенные ({downloadStats.completedInQueue})
             </Button>
           )}
         </div>
@@ -576,7 +618,7 @@ function DownloadQueue() {
             <p>Выберите плейлисты для синхронизации</p>
           </Card>
         ) : (
-          tracks.map(track => (
+          getFilteredTracks().map(track => (
             <Card
               key={track.id}
               className={`p-4 transition-all duration-200 ${track.status === 'completed' ? 'border-l-4 border-l-success-500' :

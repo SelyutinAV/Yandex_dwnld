@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional, Dict, List, Callable
 from pathlib import Path
 
-from db_manager import DatabaseManager
+from db_manager import DatabaseManager, db_manager
 from yandex_client import YandexMusicClient
 
 logger = logging.getLogger('download_queue')
@@ -61,13 +61,14 @@ class DownloadQueueManager:
                 # Добавляем в очередь
                 cursor.execute("""
                     INSERT INTO download_queue 
-                    (track_id, title, artist, album, quality, status, progress, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, ?)
+                    (track_id, title, artist, album, playlist, quality, status, progress, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)
                 """, (
                     track['id'],
                     track.get('title', 'Unknown'),
                     track.get('artist', 'Unknown'),
                     track.get('album', ''),
+                    track.get('playlist', ''),
                     quality,
                     datetime.now().isoformat(),
                     datetime.now().isoformat()
@@ -90,7 +91,7 @@ class DownloadQueueManager:
             cursor = conn.cursor()
             
             query = """
-                SELECT id, track_id, title, artist, album, status, progress, 
+                SELECT id, track_id, title, artist, album, playlist, status, progress, 
                        quality, file_path, error_message, created_at, updated_at
                 FROM download_queue
                 ORDER BY 
@@ -338,15 +339,11 @@ class DownloadQueueManager:
             album = self._sanitize_filename(track['album']) if track['album'] else 'Unknown Album'
             title = self._sanitize_filename(track['title'])
             
-            # Определяем расширение по качеству
-            extension = '.flac' if track['quality'] == 'lossless' else '.mp3'
-            filename = f"{artist} - {title}{extension}"
+            # Строим путь к файлу на основе настроек
+            output_path, track_dir = self._build_file_path(track, track['quality'])
             
-            # Создаём путь к файлу
-            track_dir = Path(self.download_path) / artist / album
+            # Создаём директорию если её нет
             track_dir.mkdir(parents=True, exist_ok=True)
-            
-            output_path = track_dir / filename
             
             # Колбэк для обновления прогресса
             def progress_callback(downloaded: int, total: int):
@@ -386,4 +383,66 @@ class DownloadQueueManager:
         for char in invalid_chars:
             name = name.replace(char, '_')
         return name.strip()
+
+    def _build_file_path(self, track: dict, quality: str) -> tuple[Path, Path]:
+        """
+        Строит путь к файлу на основе настроек пользователя
+        
+        Args:
+            track: Информация о треке
+            quality: Качество загрузки
+            
+        Returns:
+            tuple: (полный_путь_к_файлу, директория_для_создания)
+        """
+        from pathlib import Path
+        
+        # Получаем настройки из базы данных
+        settings = db_manager.get_all_settings()
+        file_template = settings.get('file_template', '{artist} - {title}')
+        folder_structure = settings.get('folder_structure', '{artist}/{album}')
+        
+        # Подготавливаем данные для подстановки
+        artist = self._sanitize_filename(track['artist'])
+        title = self._sanitize_filename(track['title'])
+        album = self._sanitize_filename(track['album']) if track['album'] else 'Unknown Album'
+        year = track.get('year', '')
+        track_num = track.get('track_number', '')
+        playlist = self._sanitize_filename(track.get('playlist', ''))
+        
+        # Преобразуем track_number в число для форматирования
+        try:
+            track_num_int = int(track_num) if track_num else 0
+        except (ValueError, TypeError):
+            track_num_int = 0
+        
+        # Определяем расширение
+        extension = '.flac' if quality == 'lossless' else '.mp3'
+        
+        # Формируем имя файла
+        filename = file_template.format(
+            artist=artist,
+            title=title,
+            album=album,
+            year=year,
+            track=track_num_int,  # Используем число для форматирования
+            playlist=playlist
+        ) + extension
+        
+        # Формируем структуру папок
+        folder_path = folder_structure.format(
+            artist=artist,
+            album=album,
+            year=year,
+            playlist=playlist
+        )
+        
+        # Убираем ведущий слеш если есть
+        folder_path = folder_path.lstrip('/')
+        
+        # Создаём полный путь
+        track_dir = Path(self.download_path) / folder_path
+        output_path = track_dir / filename
+        
+        return output_path, track_dir
 
