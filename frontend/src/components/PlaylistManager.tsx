@@ -136,8 +136,12 @@ function PlaylistManager() {
     setLoading(true)
     try {
       const results = []
+      let totalAdded = 0
+      let totalExisting = 0
+
+      // Шаг 1: Формируем список треков для каждого плейлиста
       for (const playlistId of selectedPlaylists) {
-        const response = await fetch('http://localhost:8000/api/download/playlist', {
+        const response = await fetch('http://localhost:8000/api/download/playlist/preview', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -155,20 +159,30 @@ function PlaylistManager() {
 
         const result = await response.json()
         results.push({ playlistId, result })
-        console.log(`Синхронизация плейлиста ${playlistId}:`, result)
+        totalAdded += result.added || 0
+        totalExisting += result.existing || 0
+        console.log(`Подготовлен плейлист ${playlistId}:`, result)
       }
 
-      // Показываем успешное сообщение
-      alert(`Успешно запущена синхронизация ${results.length} плейлистов!`)
+      // Показываем сообщение о подготовке
+      const confirmMessage = `✅ Список подготовлен:\n\n` +
+        `📝 Новых треков: ${totalAdded}\n` +
+        `⚠️ Уже в очереди: ${totalExisting}\n\n` +
+        `Перейдите во вкладку "Очередь загрузок" для:\n` +
+        `• Просмотра списка треков\n` +
+        `• Исключения ненужных треков\n` +
+        `• Запуска загрузки`
+
+      alert(confirmMessage)
 
       // Очищаем выбор
       setSelectedPlaylists(new Set())
 
-      // Обновляем список плейлистов после синхронизации
+      // Обновляем список плейлистов
       await loadPlaylists()
     } catch (error) {
-      console.error('Ошибка синхронизации плейлистов:', error)
-      alert(`Ошибка синхронизации: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+      console.error('Ошибка подготовки плейлистов:', error)
+      alert(`Ошибка подготовки: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
     } finally {
       setLoading(false)
     }

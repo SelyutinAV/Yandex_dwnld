@@ -10,6 +10,14 @@ import logging
 logger = logging.getLogger('yandex')
 download_logger = logging.getLogger('download')
 
+# Импортируем прямой API для FLAC
+try:
+    from yandex_direct_api import YandexMusicDirectAPI
+    DIRECT_API_AVAILABLE = True
+except ImportError:
+    DIRECT_API_AVAILABLE = False
+    logger.warning("⚠️  Модуль yandex_direct_api недоступен, FLAC через прямой API не будет работать")
+
 
 class YandexMusicClient:
     """Обертка для работы с Яндекс.Музыкой"""
@@ -24,6 +32,20 @@ class YandexMusicClient:
         self.token = token
         self.client: Optional[Client] = None
         self.uid: Optional[int] = None
+        self.direct_api_client: Optional['YandexMusicDirectAPI'] = None
+        
+        # Инициализируем прямой API клиент для Session_id или OAuth
+        if DIRECT_API_AVAILABLE:
+            try:
+                # Определяем тип токена
+                if token.startswith('3:') or token.startswith('2:'):
+                    self.direct_api_client = YandexMusicDirectAPI(token, 'session_id')
+                    logger.info("✅ Прямой API клиент инициализирован для Session_id")
+                elif token.startswith('y0_') or token.startswith('AgAAAA'):
+                    self.direct_api_client = YandexMusicDirectAPI(token, 'oauth')
+                    logger.info("✅ Прямой API клиент инициализирован для OAuth")
+            except Exception as e:
+                logger.warning(f"⚠️  Не удалось инициализировать прямой API: {e}")
         
     def connect(self) -> bool:
         """
@@ -493,8 +515,119 @@ class YandexMusicClient:
             artist_name = track.artists[0].name if track.artists else 'Unknown'
             download_logger.info(f"✅ Найден трек: {track.title} - {artist_name}")
             
-            # Получаем информацию о файле для скачивания
-            download_logger.info(f"📥 Запрашиваем доступные форматы...")
+            # ПОПЫТКА ИСПОЛЬЗОВАТЬ ПРЯМОЙ API ДЛЯ LOSSLESS
+            if quality == 'lossless' and self.direct_api_client:
+                download_logger.info(f"🔄 Попытка скачать FLAC через прямой API...")
+                try:
+                    # Используем прямой API для получения форматов
+                    formats = self.direct_api_client.get_download_info(track_id, 'lossless')
+                    
+                    if formats:
+                        # Ищем FLAC или FLAC-MP4
+                        flac_format = next((f for f in formats if f['codec'] in ['flac', 'flac-mp4']), None)
+                        
+                        if flac_format:
+                            download_logger.info(f"✅ FLAC доступен через прямой API!")
+                            download_logger.info(f"   Кодек: {flac_format['codec']}")
+                            download_logger.info(f"   Битрейт: {flac_format['bitrate_in_kbps']} kbps")
+                            
+                            # Проверяем есть ли прямая ссылка
+                            direct_link = flac_format.get('direct_link')
+                            
+                            if not direct_link:
+                                # Если нет прямой ссылки, получаем её
+                                download_logger.info(f"🔗 Получаем прямую ссылку...")
+                                direct_link = self.direct_api_client.get_direct_download_link(
+                                    flac_format['download_info_url']
+                                )
+                            else:
+                                download_logger.info(f"✅ Прямая ссылка уже в ответе API!")
+                            
+                            if direct_link:
+                                # Скачиваем через прямой API
+                                download_logger.info(f"💾 Сохраняем в: {output_path}")
+                                download_logger.info(f"📥 Начинаем скачивание...")
+                                
+                                import requests
+                                import tempfile
+                                
+                                # Проверяем нужна ли расшифровка
+                                needs_decrypt = flac_format.get('transport') == 'encraw'
+                                encryption_key = flac_format.get('key', '')
+                                
+                                # Если нужна расшифровка, скачиваем во временный файл
+                                if needs_decrypt and encryption_key:
+                                    download_logger.info(f"🔐 Файл зашифрован, потребуется расшифровка")
+                                    temp_encrypted = output_path + '.encrypted'
+                                    temp_decrypted = output_path + '.decrypted.mp4'
+                                else:
+                                    temp_encrypted = output_path
+                                
+                                response = self.direct_api_client.session.get(
+                                    direct_link,
+                                    stream=True,
+                                    timeout=120
+                                )
+                                
+                                if response.status_code == 200:
+                                    total_size = int(response.headers.get('content-length', 0))
+                                    downloaded = 0
+                                    
+                                    with open(temp_encrypted, 'wb') as f:
+                                        for chunk in response.iter_content(chunk_size=8192):
+                                            if chunk:
+                                                f.write(chunk)
+                                                downloaded += len(chunk)
+                                                
+                                                if progress_callback and total_size > 0:
+                                                    progress_callback(downloaded, total_size)
+                                    
+                                    download_logger.info(f"✅ Файл успешно скачан!")
+                                    download_logger.info(f"   Размер: {downloaded / (1024 * 1024):.2f} МБ")
+                                    
+                                    # Если нужна расшифровка и конвертация
+                                    if needs_decrypt and encryption_key:
+                                        # Расшифровываем
+                                        if not self.direct_api_client.decrypt_track(
+                                            temp_encrypted, temp_decrypted, encryption_key
+                                        ):
+                                            download_logger.error("❌ Не удалось расшифровать файл")
+                                            import os
+                                            if os.path.exists(temp_encrypted):
+                                                os.remove(temp_encrypted)
+                                            return None
+                                        
+                                        # Удаляем зашифрованный файл
+                                        import os
+                                        os.remove(temp_encrypted)
+                                        
+                                        # Конвертируем MP4 в FLAC
+                                        if not self.direct_api_client.mux_to_flac(temp_decrypted, output_path):
+                                            download_logger.error("❌ Не удалось конвертировать в FLAC")
+                                            if os.path.exists(temp_decrypted):
+                                                os.remove(temp_decrypted)
+                                            return None
+                                        
+                                        # Удаляем временный MP4
+                                        os.remove(temp_decrypted)
+                                        
+                                        download_logger.info(f"✅ FLAC файл готов!")
+                                        download_logger.info(f"   Путь: {output_path}")
+                                    
+                                    return output_path
+                                else:
+                                    download_logger.warning(f"⚠️  Ошибка скачивания: статус {response.status_code}")
+                        else:
+                            download_logger.warning(f"⚠️  FLAC не найден в ответе прямого API")
+                    else:
+                        download_logger.warning(f"⚠️  Прямой API не вернул форматы")
+                        
+                except Exception as e:
+                    download_logger.warning(f"⚠️  Ошибка при использовании прямого API: {e}")
+                    download_logger.info(f"   Переключаемся на стандартный API...")
+            
+            # Получаем информацию о файле для скачивания (стандартный способ)
+            download_logger.info(f"📥 Запрашиваем доступные форматы через стандартный API...")
             download_info = track.get_download_info(get_direct_links=True)
             
             # Детальная информация о доступных форматах

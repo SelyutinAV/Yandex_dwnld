@@ -562,6 +562,7 @@ class DatabaseManager:
                     "completed": 0,
                     "downloading": 0,
                     "pending": 0,
+                    "queued": 0,
                     "error": 0,
                     "errors": 0
                 }
@@ -581,7 +582,9 @@ class DatabaseManager:
                 "total": total,
                 "completed": 0,
                 "downloading": 0,
+                "processing": 0,
                 "pending": 0,
+                "queued": 0,
                 "error": 0,
                 "errors": 0
             }
@@ -596,6 +599,36 @@ class DatabaseManager:
                     stats['errors'] = count
             
             return stats
+    
+    def remove_from_queue(self, track_ids: List[str]) -> int:
+        """Удалить треки из очереди"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            removed_count = 0
+            for track_id in track_ids:
+                cursor.execute("DELETE FROM download_queue WHERE track_id = ?", (track_id,))
+                removed_count += cursor.rowcount
+            
+            conn.commit()
+            return removed_count
+    
+    def change_queue_status(self, track_ids: List[str], new_status: str) -> int:
+        """Изменить статус треков в очереди"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            updated_count = 0
+            for track_id in track_ids:
+                cursor.execute("""
+                    UPDATE download_queue 
+                    SET status = ?, updated_at = ?
+                    WHERE track_id = ?
+                """, (new_status, datetime.now().isoformat(), track_id))
+                updated_count += cursor.rowcount
+            
+            conn.commit()
+            return updated_count
     
     def clear_completed_downloads(self) -> int:
         """Очистить завершенные загрузки из очереди"""

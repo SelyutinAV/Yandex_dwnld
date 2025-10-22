@@ -1,8 +1,9 @@
-import { AlertCircle, CheckCircle, Download, Pause, Play, RotateCcw, Trash2, X } from 'lucide-react'
+import { AlertCircle, ArrowRight, CheckCircle, Download, Pause, Play, RotateCcw, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAppContext } from '../contexts/AppContext'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
+import { ProgressBar } from './ui/ProgressBar'
 
 interface Track {
   id: number
@@ -10,7 +11,7 @@ interface Track {
   title: string
   artist: string
   album?: string
-  status: 'pending' | 'downloading' | 'completed' | 'error'
+  status: 'queued' | 'pending' | 'processing' | 'downloading' | 'completed' | 'error'
   progress: number
   quality?: string
   error_message?: string
@@ -34,6 +35,14 @@ function DownloadQueue() {
     totalSizeMB: 0,
     totalSizeGB: 0
   })
+  const [progressData, setProgressData] = useState({
+    is_active: false,
+    overall_progress: 0,
+    overall_total: 0,
+    current_track: null as string | null,
+    current_status: null as string | null,
+    current_progress: 0
+  })
   const { setDownloading, setDownloadProgress, triggerRefresh } = useAppContext()
 
   // Загружаем данные при монтировании компонента
@@ -41,40 +50,72 @@ function DownloadQueue() {
     loadQueue()
     loadDownloadStats()
 
-    // Обновляем очередь каждые 2 секунды для более плавного прогресса
+    // Динамический интервал обновления:
+    // - Каждые 3 секунды если есть активные загрузки
+    // - Каждые 10 секунд если нет активных загрузок
     const interval = setInterval(() => {
-      loadQueue()
-      loadDownloadStats()
-    }, 2000)
+      const hasActiveDownloads = tracks.some(t =>
+        t.status === 'downloading' || t.status === 'processing' || t.status === 'pending'
+      )
+
+      // Обновляем только если есть активные загрузки или это первая загрузка
+      if (hasActiveDownloads || tracks.length === 0) {
+        loadQueue()
+        loadDownloadStats()
+        loadProgress()  // Добавляем обновление прогресса
+      }
+    }, 3000)  // Увеличен интервал до 3 секунд
+
     return () => clearInterval(interval)
-  }, [])
+  }, [tracks])  // Зависимость от tracks для определения активных загрузок
+
+  const loadProgress = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/downloads/progress')
+      if (response.ok) {
+        const data = await response.json()
+        setProgressData(data)
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки прогресса:', error)
+    }
+  }
 
   const loadQueue = async () => {
     // Показываем индикатор загрузки только при первой загрузке
     if (initialLoad) {
       setLoading(true)
     }
-    setDownloading(true)
+
+    // Показываем индикатор "downloading" только если есть реально загружающиеся треки
+    const hasActiveDownloads = tracks.some(t => t.status === 'downloading')
+
+    if (hasActiveDownloads || initialLoad) {
+      setDownloading(true)
+    } else {
+      setDownloading(false)
+    }
+
     try {
-      console.log('Загружаем очередь загрузок...')
       const response = await fetch('http://localhost:8000/api/downloads/queue')
-      console.log('Ответ сервера:', response.status, response.statusText)
 
       if (response.ok) {
         const data = await response.json()
-        console.log('Данные очереди:', data)
-        setTracks(data.queue || [])
+        const newQueue = data.queue || []
+
+        // Обновляем только если данные изменились
+        if (JSON.stringify(tracks) !== JSON.stringify(newQueue)) {
+          setTracks(newQueue)
+        }
 
         // Обновляем прогресс на основе статуса треков
-        const downloadingTracks = data.queue?.filter((t: Track) => t.status === 'downloading') || []
+        const downloadingTracks = newQueue.filter((t: Track) => t.status === 'downloading') || []
         if (downloadingTracks.length > 0) {
           const avgProgress = downloadingTracks.reduce((sum: number, t: Track) => sum + t.progress, 0) / downloadingTracks.length
           setDownloadProgress(Math.round(avgProgress))
         } else {
           setDownloadProgress(0)
         }
-      } else {
-        console.error('Ошибка ответа сервера:', response.status, response.statusText)
       }
     } catch (error) {
       console.error('Ошибка загрузки очереди:', error)
@@ -87,6 +128,19 @@ function DownloadQueue() {
     }
   }
 
+  const loadPauseStatus = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/settings')
+      if (response.ok) {
+        const data = await response.json()
+        // Предполагаем что есть поле downloads_paused в настройках
+        setIsPaused(data.downloads_paused === true || data.downloads_paused === 'true')
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки состояния паузы:', error)
+    }
+  }
+
   const loadDownloadStats = async () => {
     try {
       const response = await fetch('http://localhost:8000/api/downloads/stats')
@@ -94,6 +148,10 @@ function DownloadQueue() {
         const data = await response.json()
         setDownloadStats(data.summary)
       }
+
+      // Также загружаем данные о прогрессе и состоянии паузы
+      await loadProgress()
+      await loadPauseStatus()
     } catch (error) {
       console.error('Ошибка загрузки статистики:', error)
     }
@@ -282,8 +340,14 @@ function DownloadQueue() {
         return 'Завершено'
       case 'downloading':
         return `Загрузка... ${track.progress}%`
+      case 'processing':
+        return 'Обработка...'
       case 'error':
         return track.error_message || 'Ошибка'
+      case 'queued':
+        return 'Подготовлен (ожидает запуска)'
+      case 'pending':
+        return 'В очереди на загрузку'
       default:
         return 'В очереди'
     }
@@ -307,104 +371,283 @@ function DownloadQueue() {
     total: tracks.length,
     completed: tracks.filter(t => t.status === 'completed').length,
     downloading: tracks.filter(t => t.status === 'downloading').length,
+    processing: tracks.filter(t => t.status === 'processing').length,
     pending: tracks.filter(t => t.status === 'pending').length,
+    queued: tracks.filter(t => t.status === 'queued').length,
     errors: tracks.filter(t => t.status === 'error').length
   }
 
+  const startDownloadQueue = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/download/queue/start', {
+        method: 'POST'
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log(data.message)
+        alert(`✅ Запущена загрузка ${data.count} треков!`)
+        await loadQueue()
+      } else {
+        console.error('Ошибка запуска загрузки')
+        alert('❌ Ошибка запуска загрузки')
+      }
+    } catch (error) {
+      console.error('Ошибка запуска загрузки:', error)
+      alert('❌ Ошибка запуска загрузки')
+    }
+  }
+
+  const movePendingToQueue = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/downloads/change-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from_status: 'pending',
+          to_status: 'queued',
+          count: 10  // Переводим по 10 треков за раз
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log(data.message)
+        alert(`✅ ${data.message}`)
+        await loadQueue()
+        
+        // Автоматически запускаем загрузку после переброса
+        setTimeout(async () => {
+          await startDownloadQueue()
+        }, 1000)
+      } else {
+        console.error('Ошибка переброса треков')
+        alert('❌ Ошибка переброса треков')
+      }
+    } catch (error) {
+      console.error('Ошибка переброса треков:', error)
+      alert('❌ Ошибка переброса треков')
+    }
+  }
+
+  const clearQueuedTracks = async () => {
+    if (!confirm(`Вы уверены, что хотите удалить ${stats.queued} подготовленных треков из очереди?`)) {
+      return
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/downloads/clear-queued', {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log(data.message)
+        await loadQueue()
+      } else {
+        console.error('Ошибка очистки подготовленных треков')
+      }
+    } catch (error) {
+      console.error('Ошибка очистки подготовленных треков:', error)
+    }
+  }
+
   return (
-    <div className="w-full">
-      <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
-        <div>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Очередь загрузок</h2>
-          <div className="mt-2 flex gap-4 text-sm text-gray-600 dark:text-gray-400">
-            <span>📥 Всего скачано: <strong className="text-success-600 dark:text-success-400">{downloadStats.totalDownloaded}</strong></span>
-            <span>💾 Размер: <strong className="text-primary-600 dark:text-primary-400">{downloadStats.totalSizeGB.toFixed(1)} ГБ</strong></span>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex gap-3 text-sm">
-            <span className="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg">
-              В очереди: {stats.total}
-            </span>
-            <span className="px-3 py-1 bg-success-100 dark:bg-success-900/30 text-success-700 dark:text-success-400 rounded-lg">
-              Завершено: {stats.completed}
-            </span>
-            <span className="px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-lg">
-              Загружается: {stats.downloading}
-            </span>
-            <span className="px-3 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-lg">
-              В ожидании: {stats.pending}
-            </span>
-            {stats.errors > 0 && (
-              <span className="px-3 py-1 bg-error-100 dark:bg-error-900/30 text-error-700 dark:text-error-400 rounded-lg">
-                Ошибки: {stats.errors}
-              </span>
-            )}
-          </div>
-          <div className="flex gap-2">
-            {selectedTracks.size > 0 && (
-              <>
+    <>
+      <div className="w-full">
+        {/* Уведомление о подготовленных треках */}
+        {stats.queued > 0 && (
+          <Card className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-400 dark:border-blue-600">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-4">
+                <div className="text-5xl animate-bounce">🎵</div>
+                <div>
+                  <h3 className="text-2xl font-bold text-blue-900 dark:text-blue-100 mb-1">
+                    Готово к загрузке!
+                  </h3>
+                  <p className="text-blue-700 dark:text-blue-300">
+                    {stats.queued} {stats.queued === 1 ? 'трек' : stats.queued < 5 ? 'трека' : 'треков'} подготовлено к загрузке.
+                    Нажмите кнопку ниже, чтобы начать скачивание.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
                 <Button
-                  variant="success"
-                  onClick={retrySelectedTracks}
-                  icon={RotateCcw}
-                  size="sm"
+                  variant="primary"
+                  onClick={startDownloadQueue}
+                  size="lg"
+                  icon={Play}
+                  className="text-xl font-bold shadow-xl hover:shadow-2xl transition-all px-8 py-4"
                 >
-                  Повторить ({selectedTracks.size})
-                </Button>
-                <Button
-                  variant="error"
-                  onClick={removeSelectedTracks}
-                  icon={Trash2}
-                  size="sm"
-                >
-                  Удалить ({selectedTracks.size})
+                  🚀 Запустить загрузку ({stats.queued})
                 </Button>
                 <Button
                   variant="secondary"
-                  onClick={clearSelection}
-                  size="sm"
+                  onClick={clearQueuedTracks}
+                  size="md"
+                  icon={Trash2}
                 >
-                  Отменить выбор
+                  Очистить
                 </Button>
-              </>
-            )}
-            {tracks.length > 0 && selectedTracks.size === 0 && (
+              </div>
+            </div>
+          </Card>
+        )}
+
+        <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Очередь загрузок</h2>
+            <div className="mt-2 flex gap-4 text-sm text-gray-600 dark:text-gray-400">
+              <span>📥 Всего скачано: <strong className="text-success-600 dark:text-success-400">{downloadStats.totalDownloaded}</strong></span>
+              <span>💾 Размер: <strong className="text-primary-600 dark:text-primary-400">{downloadStats.totalSizeGB.toFixed(1)} ГБ</strong></span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex gap-3 text-sm">
+              <span className="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg">
+                В очереди: {stats.total}
+              </span>
+              <span className="px-3 py-1 bg-success-100 dark:bg-success-900/30 text-success-700 dark:text-success-400 rounded-lg">
+                Завершено: {stats.completed}
+              </span>
+              <span className="px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-lg">
+                Загружается: {stats.downloading}
+              </span>
+              {stats.processing > 0 && (
+                <span className="px-3 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-lg">
+                  Обрабатывается: {stats.processing}
+                </span>
+              )}
+              {stats.queued > 0 && (
+                <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-lg">
+                  Подготовлено: {stats.queued}
+                </span>
+              )}
+              {stats.pending > 0 && (
+                <span className="px-3 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-lg">
+                  В ожидании: {stats.pending}
+                </span>
+              )}
+              {stats.errors > 0 && (
+                <span className="px-3 py-1 bg-error-100 dark:bg-error-900/30 text-error-700 dark:text-error-400 rounded-lg">
+                  Ошибки: {stats.errors}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Прогресс-бар загрузки */}
+        <ProgressBar
+          overallProgress={progressData.overall_progress}
+          overallTotal={progressData.overall_total}
+          currentProgress={progressData.current_progress}
+          currentFileName={progressData.current_track}
+          currentStatus={progressData.current_status}
+          isActive={progressData.is_active}
+        />
+
+        <div className="flex gap-2">
+          {selectedTracks.size > 0 && (
+            <>
               <Button
-                variant="secondary"
-                onClick={selectAllTracks}
+                variant="success"
+                onClick={retrySelectedTracks}
+                icon={RotateCcw}
                 size="sm"
               >
-                Выбрать все
+                Повторить ({selectedTracks.size})
               </Button>
-            )}
-            {tracks.length === 0 && (
+              <Button
+                variant="error"
+                onClick={removeSelectedTracks}
+                icon={Trash2}
+                size="sm"
+              >
+                Удалить ({selectedTracks.size})
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={clearSelection}
+                size="sm"
+              >
+                Отменить выбор
+              </Button>
+            </>
+          )}
+          {tracks.length > 0 && selectedTracks.size === 0 && (
+            <Button
+              variant="secondary"
+              onClick={selectAllTracks}
+              size="sm"
+            >
+              Выбрать все
+            </Button>
+          )}
+          {tracks.length === 0 && (
+            <Button
+              variant="primary"
+              onClick={addTestTrack}
+              size="sm"
+            >
+              Добавить тестовые треки
+            </Button>
+          )}
+          {stats.queued > 0 && (
+            <>
               <Button
                 variant="primary"
-                onClick={addTestTrack}
-                size="sm"
+                onClick={startDownloadQueue}
+                size="md"
+                icon={Play}
+                className="text-lg font-bold shadow-lg hover:shadow-xl transition-all animate-pulse"
               >
-                Добавить тестовые треки
+                🚀 Запустить загрузку ({stats.queued})
               </Button>
-            )}
-            {stats.completed > 0 && (
               <Button
-                variant="secondary"
-                onClick={clearCompleted}
+                variant="error"
+                onClick={clearQueuedTracks}
                 size="sm"
                 icon={Trash2}
               >
-                Очистить завершенные ({stats.completed})
+                Очистить подготовленные ({stats.queued})
               </Button>
-            )}
+            </>
+          )}
+          {stats.pending > 0 && (
             <Button
-              variant="secondary"
+              variant="warning"
+              onClick={movePendingToQueue}
+              size="md"
+              icon={ArrowRight}
+              className="text-lg font-bold shadow-lg hover:shadow-xl transition-all"
+            >
+              🔄 Перебросить из ожидания ({stats.pending})
+            </Button>
+          )}
+          {(stats.downloading > 0 || stats.processing > 0 || stats.pending > 0) && (
+            <Button
+              variant={isPaused ? "success" : "warning"}
               onClick={togglePause}
               icon={isPaused ? Play : Pause}
+              size="lg"
+              className="text-lg font-bold shadow-lg hover:shadow-xl transition-all"
             >
-              {isPaused ? 'Возобновить' : 'Приостановить'}
+              {isPaused ? '▶️ Возобновить загрузку' : '⏸️ Приостановить загрузку'}
             </Button>
-          </div>
+          )}
+          {stats.completed > 0 && (
+            <Button
+              variant="secondary"
+              onClick={clearCompleted}
+              size="sm"
+              icon={Trash2}
+            >
+              Очистить завершенные ({stats.completed})
+            </Button>
+          )}
         </div>
       </div>
 
@@ -427,8 +670,10 @@ function DownloadQueue() {
               key={track.id}
               className={`p-4 transition-all duration-200 ${track.status === 'completed' ? 'border-l-4 border-l-success-500' :
                 track.status === 'downloading' ? 'border-l-4 border-l-primary-500' :
-                  track.status === 'error' ? 'border-l-4 border-l-error-500' :
-                    'border-l-4 border-l-gray-300 dark:border-l-gray-600'
+                  track.status === 'processing' ? 'border-l-4 border-l-yellow-500' :
+                    track.status === 'error' ? 'border-l-4 border-l-error-500' :
+                      track.status === 'queued' ? 'border-l-4 border-l-blue-400' :
+                        'border-l-4 border-l-gray-300 dark:border-l-gray-600'
                 }`}
             >
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
@@ -477,14 +722,19 @@ function DownloadQueue() {
                   <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                     {getStatusText(track)}
                   </div>
-                  {(track.status === 'downloading' || track.status === 'pending') && (
+                  {track.status === 'queued' && (
+                    <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-3">
+                      <div className="bg-blue-400 h-3 rounded-full w-0"></div>
+                    </div>
+                  )}
+                  {(track.status === 'downloading' || track.status === 'processing' || track.status === 'pending') && (
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
                       <div
-                        className={`h-3 rounded-full transition-all duration-500 ease-out ${track.status === 'downloading'
-                          ? 'bg-gradient-to-r from-primary-500 to-secondary-500'
-                          : 'bg-gradient-to-r from-yellow-400 to-yellow-500'
+                        className={`h-3 rounded-full transition-all duration-500 ease-out ${track.status === 'downloading' ? 'bg-gradient-to-r from-primary-500 to-secondary-500' :
+                          track.status === 'processing' ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' :
+                            'bg-gradient-to-r from-gray-400 to-gray-500'
                           }`}
-                        style={{ width: `${track.progress}%` }}
+                        style={{ width: `${track.status === 'processing' ? 50 : track.progress}%` }}
                       ></div>
                     </div>
                   )}
@@ -528,7 +778,7 @@ function DownloadQueue() {
           ))
         )}
       </div>
-    </div>
+    </>
   )
 }
 
