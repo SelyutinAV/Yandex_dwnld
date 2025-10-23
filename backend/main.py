@@ -100,6 +100,10 @@ class Settings(BaseModel):
 class TokenTest(BaseModel):
     token: str
 
+class DualTokenTest(BaseModel):
+    oauth_token: str
+    session_id_token: str
+
 class SaveTokenRequest(BaseModel):
     name: str
     token: str
@@ -382,6 +386,141 @@ async def test_token(request: TokenTest):
     except Exception as e:
         print(f"Ошибка проверки токена: {e}")
         raise HTTPException(status_code=401, detail=f"Ошибка проверки токена: {str(e)}")
+
+@app.post("/api/auth/test-dual")
+async def test_dual_tokens(request: DualTokenTest):
+    """Тестирование обоих токенов (OAuth и Session ID)"""
+    try:
+        # Проверяем OAuth токен
+        oauth_client = YandexMusicClient(request.oauth_token)
+        oauth_success = oauth_client.connect()
+        
+        # Проверяем Session ID токен
+        session_client = YandexMusicClient(request.session_id_token)
+        session_success = session_client.connect()
+        
+        if oauth_success and session_success:
+            # Оба токена работают - проверяем подписку и lossless-доступ
+            has_subscription = False
+            has_lossless_access = False
+            
+            try:
+                # Используем OAuth клиент для проверки подписки
+                if oauth_client.client:
+                    account = oauth_client.client.account_status()
+                    subscription = account.subscription
+                    
+                    print(f"Full account status: {account}")
+                    print(f"Subscription object: {subscription}")
+                    
+                    # Преобразуем subscription в словарь для сериализации
+                    subscription_dict = {}
+                    try:
+                        if hasattr(subscription, '__dict__'):
+                            # Фильтруем несериализуемые объекты
+                            for key, value in subscription.__dict__.items():
+                                try:
+                                    # Пробуем сериализовать значение
+                                    import json
+                                    json.dumps(value)
+                                    subscription_dict[key] = value
+                                except:
+                                    # Если не сериализуется, преобразуем в строку
+                                    subscription_dict[key] = str(value)
+                        elif hasattr(subscription, 'items'):
+                            subscription_dict = dict(subscription)
+                        else:
+                            # Пытаемся получить атрибуты
+                            for attr in dir(subscription):
+                                if not attr.startswith('_'):
+                                    try:
+                                        value = getattr(subscription, attr)
+                                        if not callable(value):
+                                            try:
+                                                import json
+                                                json.dumps(value)
+                                                subscription_dict[attr] = value
+                                            except:
+                                                subscription_dict[attr] = str(value)
+                                    except:
+                                        pass
+                    except Exception as e:
+                        print(f"Ошибка при преобразовании subscription: {e}")
+                        subscription_dict = {"error": str(e)}
+                    
+                    print(f"Subscription dict: {subscription_dict}")
+                    
+                    # Проверяем все возможные поля подписки
+                    has_subscription = (
+                        subscription_dict.get('had_any_subscription', False) or 
+                        subscription_dict.get('can_start_trial', False) or
+                        subscription_dict.get('active', False) or
+                        subscription_dict.get('non_auto_renewable', False) or
+                        subscription_dict.get('auto_renewable', False) or
+                        subscription_dict.get('provider', False) or
+                        subscription_dict.get('family', False) or
+                        # Проверяем также поля в других форматах
+                        getattr(subscription, 'had_any_subscription', False) or
+                        getattr(subscription, 'can_start_trial', False) or
+                        getattr(subscription, 'active', False)
+                    )
+                    
+                    # Проверяем доступность lossless-формата
+                    has_lossless_access = (
+                        subscription_dict.get('had_any_subscription', False) or 
+                        subscription_dict.get('can_start_trial', False) or
+                        subscription_dict.get('active', False) or
+                        subscription_dict.get('non_auto_renewable', False) or
+                        subscription_dict.get('auto_renewable', False) or
+                        subscription_dict.get('provider', False) or
+                        subscription_dict.get('family', False) or
+                        # Проверяем также поля в других форматах
+                        getattr(subscription, 'had_any_subscription', False) or
+                        getattr(subscription, 'can_start_trial', False) or
+                        getattr(subscription, 'active', False)
+                    )
+                    
+                    print(f"Has subscription: {has_subscription}, Has lossless: {has_lossless_access}")
+                    
+            except Exception as e:
+                print(f"Ошибка при проверке подписки: {e}")
+                # Если не удалось проверить, предполагаем что есть подписка
+                has_subscription = True
+                has_lossless_access = True
+            
+            return {
+                "status": "success", 
+                "message": "Оба токена работают корректно",
+                "oauth_valid": True,
+                "session_id_valid": True,
+                "has_subscription": has_subscription,
+                "has_lossless_access": has_lossless_access,
+                "subscription_details": subscription_dict if 'subscription_dict' in locals() else None
+            }
+        elif oauth_success:
+            return {
+                "status": "partial", 
+                "message": "OAuth токен работает, но Session ID токен недействителен",
+                "oauth_valid": True,
+                "session_id_valid": False,
+                "has_subscription": False,
+                "has_lossless_access": False
+            }
+        elif session_success:
+            return {
+                "status": "partial", 
+                "message": "Session ID токен работает, но OAuth токен недействителен",
+                "oauth_valid": False,
+                "session_id_valid": True,
+                "has_subscription": False,
+                "has_lossless_access": False
+            }
+        else:
+            raise HTTPException(status_code=401, detail="Оба токена недействительны")
+            
+    except Exception as e:
+        print(f"Ошибка проверки токенов: {e}")
+        raise HTTPException(status_code=401, detail=f"Ошибка проверки токенов: {str(e)}")
 
 @app.get("/api/auth/guide")
 async def get_token_guide():
@@ -1026,6 +1165,59 @@ async def update_download_path(request: dict):
         logger.error(f"Ошибка обновления пути загрузки: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/system/restart")
+async def restart_system():
+    """Полный перезапуск системы"""
+    try:
+        import subprocess
+        import os
+        
+        # Получаем путь к скрипту перезапуска
+        script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "restart_app.sh")
+        
+        # Запускаем скрипт перезапуска в фоне
+        subprocess.Popen(["/bin/bash", script_path], 
+                       stdout=subprocess.DEVNULL, 
+                       stderr=subprocess.DEVNULL,
+                       preexec_fn=os.setsid)
+        
+        return {"message": "Система перезапускается...", "status": "restarting"}
+    except Exception as e:
+        logger.error(f"Ошибка перезапуска системы: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/folders/scan-stop")
+async def stop_folder_scanning():
+    """Остановить сканирование папок"""
+    try:
+        # Останавливаем все процессы Python
+        import subprocess
+        subprocess.run(["pkill", "-f", "python main.py"], capture_output=True)
+        subprocess.run(["pkill", "-f", "yandex_downloads"], capture_output=True)
+        
+        # Ждем немного, чтобы процессы завершились
+        import time
+        time.sleep(2)
+        
+        # Перезапускаем backend
+        backend_dir = os.path.dirname(__file__)
+        subprocess.Popen(["/bin/bash", "-c", f"cd {backend_dir} && nohup python main.py > /tmp/backend.log 2>&1 &"], 
+                       stdout=subprocess.DEVNULL, 
+                       stderr=subprocess.DEVNULL,
+                       preexec_fn=os.setsid)
+        
+        # Перезапускаем frontend
+        frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+        subprocess.Popen(["/bin/bash", "-c", f"cd {frontend_dir} && nohup npm run dev > /tmp/frontend.log 2>&1 &"], 
+                       stdout=subprocess.DEVNULL, 
+                       stderr=subprocess.DEVNULL,
+                       preexec_fn=os.setsid)
+        
+        return {"message": "Сканирование остановлено, приложение перезапускается...", "status": "restarting"}
+    except Exception as e:
+        logger.error(f"Ошибка остановки сканирования: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/settings")
 async def save_settings(settings: Settings):
     """Сохранить настройки"""
@@ -1146,10 +1338,29 @@ async def list_folders(request: ListFoldersRequest):
         if not folder_path.is_dir():
             raise HTTPException(status_code=400, detail="Указанный путь не является директорией")
         
+        # Проверяем, не является ли это сетевой папкой
+        path_str = str(folder_path)
+        if any(network_path in path_str for network_path in ['/run/user/', '/mnt/', 'smb-share:', 'nfs:', 'cifs:']):
+            # Для сетевых папок ограничиваем количество элементов
+            try:
+                items = list(folder_path.iterdir())
+                if len(items) > 1000:  # Ограничиваем до 1000 элементов
+                    logger.warning(f"Сетевая папка {path_str} содержит {len(items)} элементов, ограничиваем до 1000")
+                    items = items[:1000]
+            except (OSError, PermissionError) as e:
+                logger.error(f"Ошибка доступа к сетевой папке {path_str}: {e}")
+                raise HTTPException(status_code=403, detail="Нет доступа к сетевой папке")
+        
         # Получаем только директории (включая символические ссылки на директории)
         folders = []
         try:
-            for item in folder_path.iterdir():
+            # Используем items если это сетевая папка, иначе обычный iterdir()
+            if 'items' in locals():
+                items_to_process = items
+            else:
+                items_to_process = folder_path.iterdir()
+            
+            for item in items_to_process:
                 # Проверяем, что это директория (обычная или символическая ссылка на директорию)
                 is_directory = item.is_dir()
                 if not is_directory and item.is_symlink():

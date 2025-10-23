@@ -8,6 +8,7 @@ import {
   Info,
   Key,
   Palette,
+  Power,
   RefreshCw,
   Save,
   ScrollText,
@@ -245,10 +246,70 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
     }
   }
 
+  const handleSystemRestart = async () => {
+    if (!window.confirm('Вы уверены, что хотите перезапустить всю систему? Это займет несколько секунд.')) {
+      return
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/system/restart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
+      if (response.ok) {
+        alert('Система перезапускается... Пожалуйста, подождите несколько секунд и обновите страницу.')
+        // Через 5 секунд обновляем страницу
+        setTimeout(() => {
+          window.location.reload()
+        }, 5000)
+      } else {
+        console.error('Ошибка при перезапуске системы')
+        alert('Ошибка при перезапуске системы')
+      }
+    } catch (error) {
+      console.error('Ошибка при перезапуске системы:', error)
+      alert(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+    }
+  }
+
+  const handleStopScanning = async () => {
+    if (!window.confirm('Вы уверены, что хотите остановить сканирование папок? Это может прервать анализ файлов.')) {
+      return
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/folders/scan-stop', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        alert(data.message || 'Сканирование папок остановлено. Приложение перезапускается...')
+        // Через 5 секунд обновляем страницу
+        setTimeout(() => {
+          window.location.reload()
+        }, 5000)
+      } else {
+        console.error('Ошибка при остановке сканирования')
+        alert('Ошибка при остановке сканирования')
+      }
+    } catch (error) {
+      console.error('Ошибка при остановке сканирования:', error)
+      alert(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+    }
+  }
+
   const navSections = [
     { id: 'tokens', label: 'Токены', icon: Key, description: 'Управление токенами доступа' },
     { id: 'download', label: 'Загрузка', icon: Download, description: 'Настройки загрузки музыки' },
-    { id: 'logs', label: 'Логи', icon: ScrollText, description: 'Просмотр и очистка логов' }
+    { id: 'logs', label: 'Логи', icon: ScrollText, description: 'Просмотр и очистка логов' },
+    { id: 'system', label: 'Система', icon: Power, description: 'Управление системой' }
   ] as const
 
   const currentSection = navSections.find(section => section.id === activeSection)
@@ -633,6 +694,94 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                       <li>• <strong>Все логи</strong> - объединенные логи всех типов</li>
                       <li>• Логи автоматически ротируются при достижении 10 МБ</li>
                       <li>• Для отладки FLAC смотрите логи "Загрузки"</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'system' && (
+            <div className="space-y-6">
+              {/* Управление системой */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Power size={20} className="text-primary-500" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Управление системой</h4>
+                </div>
+
+                <div className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20 p-6 rounded-lg border border-red-200 dark:border-red-800">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle size={20} className="text-red-600 dark:text-red-400 mt-0.5" />
+                    <div className="flex-1">
+                      <h5 className="font-medium text-red-800 dark:text-red-200 mb-2">Полный перезапуск системы</h5>
+                      <p className="text-sm text-red-700 dark:text-red-300 mb-4">
+                        Эта операция остановит и перезапустит все серверы приложения (backend и frontend).
+                        Процесс займет несколько секунд.
+                      </p>
+                      <Button
+                        onClick={handleSystemRestart}
+                        className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        <Power size={16} />
+                        Перезапустить систему
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 p-6 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle size={20} className="text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                    <div className="flex-1">
+                      <h5 className="font-medium text-yellow-800 dark:text-yellow-200 mb-2">Остановить сканирование папок</h5>
+                      <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-4">
+                        Если приложение зависло из-за сканирования большой сетевой папки, используйте эту кнопку для принудительной остановки.
+                      </p>
+                      <Button
+                        onClick={handleStopScanning}
+                        className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white"
+                      >
+                        <RefreshCw size={16} />
+                        Остановить сканирование
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Информация о системе */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Info size={20} className="text-primary-500" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Информация о системе</h4>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                    <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Backend</h5>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Порт: 8000</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Статус: {isConnected ? 'Подключен' : 'Отключен'}</p>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                    <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Frontend</h5>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Порт: 3000</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Статус: Активен</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Предупреждение */}
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                <div className="flex items-start gap-3">
+                  <AlertCircle size={20} className="text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                  <div>
+                    <h5 className="font-medium text-yellow-800 dark:text-yellow-200 mb-2">Важно</h5>
+                    <ul className="text-sm text-yellow-700 dark:text-yellow-300 space-y-1">
+                      <li>• Перезапуск остановит все активные загрузки</li>
+                      <li>• Несохраненные настройки будут потеряны</li>
+                      <li>• После перезапуска страница автоматически обновится</li>
+                      <li>• Процесс займет 5-10 секунд</li>
                     </ul>
                   </div>
                 </div>
