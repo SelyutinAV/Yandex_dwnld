@@ -431,19 +431,16 @@ function DownloadQueue() {
       if (response.ok) {
         const data = await response.json()
         if (data.status === 'started') {
-          console.log(`Запущена загрузка ${data.queued} треков`)
-          alert(`✅ Запущена загрузка ${data.queued} треков!`)
+          console.log(`✅ Запущена загрузка ${data.queued} треков`)
         } else if (data.status === 'empty') {
-          alert('⚠️ Нет треков для загрузки')
+          console.log('⚠️ Нет треков для загрузки')
         }
         await loadQueue()
       } else {
         console.error('Ошибка запуска загрузки')
-        alert('❌ Ошибка запуска загрузки')
       }
     } catch (error) {
       console.error('Ошибка запуска загрузки:', error)
-      alert('❌ Ошибка запуска загрузки')
     }
   }
 
