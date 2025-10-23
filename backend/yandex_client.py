@@ -316,7 +316,7 @@ class YandexMusicClient:
             
             print(f"Получено {len(tracks)} треков из плейлиста {playlist_id}")
             
-            return self._process_tracks_batch(tracks, batch_size)
+            return self._process_tracks_batch(tracks, batch_size, playlist.title)
             
         except Exception as e:
             print(f"Ошибка получения треков для плейлиста {playlist_id}: {e}")
@@ -392,7 +392,8 @@ class YandexMusicClient:
                                 'artist': ', '.join(artists) if artists else 'Неизвестный исполнитель',
                                 'album': album_title,
                                 'duration': track.duration_ms // 1000 if track.duration_ms else 0,
-                                'available': getattr(track, 'available', True)
+                                'available': getattr(track, 'available', True),
+                                'playlist_name': 'Мне нравится'
                             }
                             
                             result.append(track_data)
@@ -420,7 +421,7 @@ class YandexMusicClient:
             traceback.print_exc()
             return []
     
-    def _process_tracks_batch(self, tracks, batch_size: int = 100) -> List[dict]:
+    def _process_tracks_batch(self, tracks, batch_size: int = 100, playlist_name: str = None) -> List[dict]:
         """
         Обработка списка треков батчами
         
@@ -464,7 +465,8 @@ class YandexMusicClient:
                         'artist': ', '.join(artists) if artists else 'Неизвестный исполнитель',
                         'album': album_title,
                         'duration': track.duration_ms // 1000 if track.duration_ms else 0,
-                        'available': getattr(track, 'available', True)
+                        'available': getattr(track, 'available', True),
+                        'playlist_name': playlist_name or 'Unknown Playlist'
                     }
                     
                     result.append(track_data)

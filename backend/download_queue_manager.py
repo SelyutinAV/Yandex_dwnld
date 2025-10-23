@@ -317,7 +317,7 @@ class DownloadQueueManager:
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id, track_id, title, artist, album, quality
+                SELECT id, track_id, title, artist, album, playlist, quality
                 FROM download_queue
                 WHERE status = 'queued'
                 ORDER BY created_at ASC
@@ -335,7 +335,8 @@ class DownloadQueueManager:
                 'title': row[2],
                 'artist': row[3],
                 'album': row[4],
-                'quality': row[5]
+                'playlist': row[5],
+                'quality': row[6]
             }
     
     def _update_track_status(self, track_id: str, status: str, progress: int = 0, 

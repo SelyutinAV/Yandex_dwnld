@@ -31,7 +31,6 @@ logger = get_logger(__name__)
 yandex_client: Optional[YandexMusicClient] = None
 download_manager: Optional[DownloadManager] = None
 download_queue_manager = None  # Новый менеджер очереди
-download_worker_running = False  # Флаг работы воркера загрузок (deprecated)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -116,142 +115,6 @@ class ProgressUpdateRequest(BaseModel):
     progress: int
 
 # Функция для обновления клиента
-async def process_download_queue():
-    """Фоновый воркер для обработки очереди загрузок"""
-    global download_worker_running
-    
-    # Проверяем, не запущен ли уже воркер
-    if download_worker_running:
-        logger.info("Воркер загрузки уже запущен")
-        return
-    
-    download_worker_running = True
-    logger.info("🚀 Запущен воркер обработки очереди загрузок")
-    
-    try:
-        while True:
-            # Проверяем, не приостановлена ли загрузка
-            paused = db_manager.get_setting("downloads_paused", "false").lower() == "true"
-            if paused:
-                logger.info("⏸️  Загрузка приостановлена, ожидание...")
-                await asyncio.sleep(2)
-                continue
-            
-            # Получаем следующий трек для загрузки
-            with db_manager.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT id, track_id, title, artist, album, quality
-                    FROM download_queue
-                    WHERE status IN ('queued', 'pending')
-                    ORDER BY created_at ASC
-                    LIMIT 1
-                """)
-                
-                row = cursor.fetchone()
-                
-                if not row:
-                    # Нет треков для загрузки, ждем
-                    logger.info("✅ Очередь пуста, воркер завершается")
-                    break
-                
-                track_info = {
-                    'id': row[0],
-                    'track_id': row[1],
-                    'title': row[2],
-                    'artist': row[3],
-                    'album': row[4],
-                    'quality': row[5]
-                }
-            
-            # Обновляем статус на 'processing' - трек взят в обработку
-            with db_manager.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    UPDATE download_queue 
-                    SET status = 'processing', updated_at = ?
-                    WHERE id = ?
-                """, (datetime.now().isoformat(), track_info['id']))
-                conn.commit()
-            
-            logger.info(f"⬇️  Загружаем: {track_info['title']} - {track_info['artist']}")
-            
-            # Загружаем трек
-            try:
-                # Получаем путь для загрузки
-                download_path = db_manager.get_setting(
-                    "download_path", 
-                    os.getenv("DOWNLOAD_PATH", "/home/urch/Music/Yandex")
-                )
-                
-                # Формируем путь сохранения
-                from pathlib import Path
-                artist_folder = download_manager._sanitize_filename(track_info['artist'])
-                album_folder = download_manager._sanitize_filename(track_info['album'] or 'Unknown Album')
-                save_path = Path(download_path) / artist_folder / album_folder
-                save_path.mkdir(parents=True, exist_ok=True)
-                
-                # Создаем callback для прогресса
-                def progress_callback(bytes_downloaded, total_bytes, progress_percent):
-                    try:
-                        db_manager.update_download_progress(track_info['track_id'], int(progress_percent))
-                    except Exception as e:
-                        logger.error(f"Ошибка обновления прогресса: {e}")
-                
-                # Загружаем трек
-                file_path = yandex_client.download_track(
-                    track_info['track_id'],
-                    str(save_path),
-                    track_info['quality'],
-                    progress_callback=progress_callback
-                )
-                
-                if file_path:
-                    # Добавляем метаданные
-                    download_manager._add_metadata(file_path, {
-                        'title': track_info['title'],
-                        'artist': track_info['artist'],
-                        'album': track_info['album']
-                    })
-                    
-                    # Обновляем статус на 'completed'
-                    with db_manager.get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("""
-                            UPDATE download_queue 
-                            SET status = 'completed', progress = 100, updated_at = ?
-                            WHERE id = ?
-                        """, (datetime.now().isoformat(), track_info['id']))
-                        conn.commit()
-                    
-                    logger.info(f"✅ Загружено: {track_info['title']}")
-                else:
-                    # Ошибка загрузки
-                    raise Exception("Не удалось загрузить трек")
-                    
-            except Exception as e:
-                error_msg = str(e)
-                logger.error(f"❌ Ошибка загрузки {track_info['title']}: {error_msg}")
-                
-                # Обновляем статус на 'error'
-                with db_manager.get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        UPDATE download_queue 
-                        SET status = 'error', error_message = ?, updated_at = ?
-                        WHERE id = ?
-                    """, (error_msg, datetime.now().isoformat(), track_info['id']))
-                    conn.commit()
-            
-            # Небольшая пауза между загрузками
-            await asyncio.sleep(1)
-    
-    except Exception as e:
-        logger.error(f"Ошибка в воркере загрузки: {e}")
-    finally:
-        download_worker_running = False
-        logger.info("🛑 Воркер обработки очереди завершил работу")
-
 def update_yandex_client(token: Optional[str] = None):
     """Обновление клиента Яндекс.Музыка"""
     global yandex_client, download_manager
@@ -933,16 +796,20 @@ async def preview_playlist_download(request: DownloadRequest):
                         existing_count += 1
                         continue
                     
+                    # Получаем название плейлиста
+                    playlist_name = track.get('playlist_name', 'Unknown Playlist')
+                    
                     # Добавляем трек в очередь со статусом 'queued'
                     cursor.execute("""
                         INSERT INTO download_queue 
-                        (track_id, title, artist, album, status, progress, quality, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, 'queued', 0, ?, ?, ?)
+                        (track_id, title, artist, album, playlist, status, progress, quality, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)
                     """, (
                         track['id'],
                         track['title'],
                         track['artist'],
                         track.get('album', 'Unknown Album'),
+                        playlist_name,
                         request.quality,
                         datetime.now().isoformat(),
                         datetime.now().isoformat()
@@ -977,8 +844,8 @@ async def start_download_queue():
         
         # Запускаем фоновую задачу для обработки очереди
         if download_manager and queued_count > 0:
-            # Создаем фоновую задачу для загрузки
-            asyncio.create_task(process_download_queue())
+            # Используем новый DownloadQueueManager вместо старого воркера
+            pass
         
         return {
             "status": "success",
