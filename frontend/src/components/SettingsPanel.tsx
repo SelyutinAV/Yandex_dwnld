@@ -131,13 +131,14 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
       })
       if (response.ok) {
         const result = await response.json()
-        alert(`Логи очищены! Удалено файлов: ${result.files.length}`)
+        // Логи успешно очищены - обновляем интерфейс без дополнительных всплывающих окон
         setLogs([])
         loadLogStats()
+        console.log(`Логи очищены! Удалено файлов: ${result.files.length}`)
       }
     } catch (error) {
       console.error('Ошибка очистки логов:', error)
-      alert('Ошибка при очистке логов')
+      // Ошибки также логируем в консоль вместо всплывающих окон
     }
   }
 
