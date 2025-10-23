@@ -26,9 +26,6 @@ interface TokenHelperProps {
 
 function TokenHelper({ isOpen, onClose, onTokenReceived }: TokenHelperProps) {
   const [currentStep, setCurrentStep] = useState(1)
-  const [token, setToken] = useState('')
-  const [isTesting, setIsTesting] = useState(false)
-  const [testResult, setTestResult] = useState<'success' | 'error' | null>(null)
   const [showToken, setShowToken] = useState(false)
   const [oauthUrl, setOauthUrl] = useState('')
   const [extractedToken, setExtractedToken] = useState('')
@@ -47,9 +44,6 @@ function TokenHelper({ isOpen, onClose, onTokenReceived }: TokenHelperProps) {
   useEffect(() => {
     if (isOpen) {
       setCurrentStep(1)
-      setToken('')
-      setIsTesting(false)
-      setTestResult(null)
       setShowToken(false)
       setOauthUrl('')
       setExtractedToken('')
@@ -167,7 +161,6 @@ function TokenHelper({ isOpen, onClose, onTokenReceived }: TokenHelperProps) {
     if (token) {
       setExtractedToken(token)
       setOauthToken(token) // Заполняем поле OAuth токена в навигации
-      setToken(token) // Устанавливаем токен для тестирования
     } else {
       setExtractedToken('')
     }
@@ -221,7 +214,6 @@ function TokenHelper({ isOpen, onClose, onTokenReceived }: TokenHelperProps) {
     if (sessionId) {
       setExtractedSessionId(sessionId)
       setSessionIdToken(sessionId) // Заполняем поле Session ID токена в навигации
-      setToken(sessionId) // Устанавливаем токен для тестирования
     } else {
       setExtractedSessionId('')
     }
@@ -289,24 +281,20 @@ function TokenHelper({ isOpen, onClose, onTokenReceived }: TokenHelperProps) {
 
         console.log('Subscription details:', result.subscription_details)
       } else {
-        const error = await response.json()
+        await response.json()
         setTestConnectionResult('error')
         setHasSubscription(false)
         setHasLosslessAccess(false)
         setSubscriptionDetails(null)
       }
-    } catch (error) {
-      console.error('Ошибка при тестировании соединения:', error)
+    } catch (err) {
+      console.error('Ошибка при тестировании соединения:', err)
       setTestConnectionResult('error')
       setHasSubscription(false)
       setHasLosslessAccess(false)
     } finally {
       setIsTestingConnection(false)
     }
-  }
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
   }
 
   return (
