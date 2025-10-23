@@ -532,16 +532,12 @@ class DatabaseManager:
             if not cursor.fetchone():
                 return False
             
-            # Обновляем прогресс
+            # Обновляем только прогресс, не меняем статус автоматически
             cursor.execute("""
                 UPDATE download_queue 
-                SET progress = ?, updated_at = ?, status = CASE 
-                    WHEN ? = 100 THEN 'completed'
-                    WHEN ? > 0 THEN 'downloading'
-                    ELSE status
-                END
+                SET progress = ?, updated_at = ?
                 WHERE track_id = ?
-            """, (progress, datetime.now().isoformat(), progress, progress, track_id))
+            """, (progress, datetime.now().isoformat(), track_id))
             
             conn.commit()
             return cursor.rowcount > 0

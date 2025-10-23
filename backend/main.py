@@ -1096,25 +1096,58 @@ async def get_download_stats():
             }
         }
 
+# Глобальная переменная для хранения общего количества треков в текущей сессии загрузки
+_download_session_total = None
+
 @app.get("/api/downloads/progress")
 async def get_download_progress():
     """Получить информацию о прогрессе загрузки"""
+    global _download_session_total
+    
     try:
         with db_manager.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Прогресс текущей сессии загрузки - только треки которые были в работе
-            cursor.execute("""
-                SELECT COUNT(*) FROM download_queue 
-                WHERE status IN ('pending', 'downloading', 'processing', 'completed')
-            """)
-            total_in_session = cursor.fetchone()[0]
+            # Получаем статистику очереди
+            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status = 'pending'")
+            pending = cursor.fetchone()[0]
             
-            cursor.execute("""
-                SELECT COUNT(*) FROM download_queue 
-                WHERE status = 'completed'
-            """)
-            completed_in_session = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status = 'queued'")
+            queued = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status = 'downloading'")
+            downloading = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status = 'completed'")
+            completed = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status = 'error'")
+            errors = cursor.fetchone()[0]
+            
+            # Текущее общее количество треков в очереди
+            current_total = pending + queued + downloading + completed + errors
+            
+            # Если есть активные загрузки и мы еще не установили общее количество для сессии
+            if downloading > 0 and _download_session_total is None:
+                _download_session_total = current_total
+                logger.info(f"🎯 Установлено общее количество треков для сессии: {_download_session_total}")
+            
+            # Если нет активных загрузок, сбрасываем счетчик сессии
+            if downloading == 0 and _download_session_total is not None:
+                logger.info("🏁 Сессия загрузки завершена, сбрасываем счетчик")
+                _download_session_total = None
+            
+            # Используем сохраненное значение или текущее
+            total_tracks = _download_session_total if _download_session_total is not None else current_total
+            
+            # Если все треки завершены и нет сохраненного значения, используем историческое
+            if total_tracks == 0:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM download_queue 
+                    WHERE status IN ('completed', 'error')
+                """)
+                historical_total = cursor.fetchone()[0]
+                total_tracks = max(historical_total, 1)
             
             # Текущий обрабатываемый файл (processing или downloading)
             cursor.execute("""
@@ -1127,13 +1160,15 @@ async def get_download_progress():
             current_track = cursor.fetchone()
             
             # Проверяем есть ли активные загрузки (только downloading и processing)
-            cursor.execute("SELECT COUNT(*) FROM download_queue WHERE status IN ('processing', 'downloading')")
-            active_downloads = cursor.fetchone()[0]
+            active_downloads = downloading
+            
+            # Прогресс = завершенные + ошибки (оба статуса означают "обработано")
+            processed_tracks = completed + errors
             
             result = {
                 "is_active": active_downloads > 0,
-                "overall_progress": completed_in_session,
-                "overall_total": total_in_session,
+                "overall_progress": processed_tracks,
+                "overall_total": total_tracks,
                 "current_track": None,
                 "current_status": None,
                 "current_progress": 0

@@ -49,12 +49,26 @@ function DownloadQueue() {
 
   // Функция для фильтрации треков по статусу
   const getFilteredTracks = () => {
-    if (!statusFilter) return tracks
-    if (statusFilter === 'pending') {
-      // Для фильтра "pending" показываем треки со статусами 'pending' и 'queued'
-      return tracks.filter(track => track.status === 'pending' || track.status === 'queued')
+    let filteredTracks = tracks;
+
+    if (statusFilter) {
+      if (statusFilter === 'pending') {
+        // Для фильтра "pending" показываем треки со статусами 'pending' и 'queued'
+        filteredTracks = tracks.filter(track => track.status === 'pending' || track.status === 'queued')
+      } else {
+        filteredTracks = tracks.filter(track => track.status === statusFilter)
+      }
     }
-    return tracks.filter(track => track.status === statusFilter)
+
+    // Сортируем треки: загружающиеся вверху, остальные по дате создания
+    return filteredTracks.sort((a, b) => {
+      // Приоритет для загружающихся треков
+      if (a.status === 'downloading' && b.status !== 'downloading') return -1;
+      if (b.status === 'downloading' && a.status !== 'downloading') return 1;
+
+      // Если оба загружаются или оба не загружаются, сортируем по дате
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
   }
 
   // Загружаем данные при монтировании компонента
@@ -69,6 +83,14 @@ function DownloadQueue() {
       const hasActiveDownloads = tracks.some(t =>
         t.status === 'downloading' || t.status === 'processing' || t.status === 'pending' || t.status === 'queued'
       )
+
+      // ТОЧКА КОНТРОЛЯ: Логируем решение об обновлении
+      console.log('⏰ Интервал обновления:', {
+        hasActiveDownloads,
+        tracksLength: tracks.length,
+        willUpdate: hasActiveDownloads || tracks.length === 0,
+        timestamp: new Date().toISOString()
+      })
 
       // Обновляем только если есть активные загрузки или это первая загрузка
       if (hasActiveDownloads || tracks.length === 0) {
@@ -86,6 +108,20 @@ function DownloadQueue() {
       const response = await fetch('http://localhost:8000/api/downloads/progress')
       if (response.ok) {
         const data = await response.json()
+
+        // ТОЧКА КОНТРОЛЯ: Логируем изменения прогресса
+        const oldProgress = progressData.overall_progress
+        const oldTotal = progressData.overall_total
+        const oldActive = progressData.is_active
+
+        if (oldProgress !== data.overall_progress || oldTotal !== data.overall_total || oldActive !== data.is_active) {
+          console.log('🔄 ProgressBar обновление:', {
+            old: { progress: oldProgress, total: oldTotal, active: oldActive },
+            new: { progress: data.overall_progress, total: data.overall_total, active: data.is_active },
+            timestamp: new Date().toISOString()
+          })
+        }
+
         setProgressData(data)
       }
     } catch (error) {
@@ -144,14 +180,9 @@ function DownloadQueue() {
 
         // Обновляем состояние паузы
         setIsPaused(data.is_paused === true)
-        setProgressData({
-          is_active: data.is_running,
-          overall_progress: 0,
-          overall_total: 0,
-          current_track: data.current_track_id,
-          current_status: null,
-          current_progress: 0
-        })
+
+        // НЕ сбрасываем progressData здесь - это вызывает прыжки!
+        // setProgressData будет обновлен в loadProgress()
       }
 
       // Также загружаем данные о прогрессе
@@ -361,7 +392,7 @@ function DownloadQueue() {
       case 'completed':
         return 'Завершено'
       case 'downloading':
-        return `Загрузка... ${track.progress}%`
+        return `Загрузка... ${Math.min(Math.max(track.progress || 0, 0), 100)}%`
       case 'processing':
         return 'Обработка...'
       case 'error':
@@ -400,8 +431,8 @@ function DownloadQueue() {
       if (response.ok) {
         const data = await response.json()
         if (data.status === 'started') {
-          console.log(`Запущена загрузка ${data.pending} треков`)
-          alert(`✅ Запущена загрузка ${data.pending} треков!`)
+          console.log(`Запущена загрузка ${data.queued} треков`)
+          alert(`✅ Запущена загрузка ${data.queued} треков!`)
         } else if (data.status === 'empty') {
           alert('⚠️ Нет треков для загрузки')
         }
@@ -677,8 +708,8 @@ function DownloadQueue() {
             <Card
               key={track.id}
               className={`p-4 transition-all duration-200 ${track.status === 'completed' ? 'border-l-4 border-l-success-500' :
-                track.status === 'downloading' ? 'border-l-4 border-l-primary-500' :
-                  track.status === 'processing' ? 'border-l-4 border-l-yellow-500' :
+                track.status === 'downloading' ? 'border-l-4 border-l-primary-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg' :
+                  track.status === 'processing' ? 'border-l-4 border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/20' :
                     track.status === 'error' ? 'border-l-4 border-l-error-500' :
                       track.status === 'queued' ? 'border-l-4 border-l-blue-400' :
                         'border-l-4 border-l-gray-300 dark:border-l-gray-600'
@@ -702,8 +733,13 @@ function DownloadQueue() {
 
                 {/* Информация о треке */}
                 <div className="md:col-span-4 min-w-0">
-                  <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">
+                  <div className="font-semibold text-gray-900 dark:text-gray-100 truncate flex items-center gap-2">
                     {track.title}
+                    {track.status === 'downloading' && (
+                      <span className="px-2 py-1 bg-blue-500 text-white text-xs font-bold rounded-full animate-pulse">
+                        СЕЙЧАС ЗАГРУЖАЕТСЯ
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400 truncate">
                     {track.artist}
@@ -738,11 +774,13 @@ function DownloadQueue() {
                   {(track.status === 'downloading' || track.status === 'processing' || track.status === 'pending') && (
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
                       <div
-                        className={`h-3 rounded-full transition-all duration-500 ease-out ${track.status === 'downloading' ? 'bg-gradient-to-r from-primary-500 to-secondary-500' :
+                        className={`h-3 rounded-full transition-all duration-500 ease-out ${track.status === 'downloading' ? 'bg-gradient-to-r from-blue-500 to-blue-600' :
                           track.status === 'processing' ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' :
                             'bg-gradient-to-r from-gray-400 to-gray-500'
                           }`}
-                        style={{ width: `${track.status === 'processing' ? 50 : track.progress}%` }}
+                        style={{
+                          width: `${Math.min(Math.max(track.progress || 0, 0), 100)}%`
+                        }}
                       ></div>
                     </div>
                   )}

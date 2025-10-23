@@ -17,14 +17,32 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     currentStatus = '',
     isActive
 }) => {
-    const overallPercentage = overallTotal > 0 ? (overallProgress / overallTotal) * 100 : 0;
+    // ТОЧКА КОНТРОЛЯ: Логируем изменения в ProgressBar
+    React.useEffect(() => {
+        console.log('📊 ProgressBar рендер:', {
+            overallProgress,
+            overallTotal,
+            isActive,
+            percentage: overallTotal > 0 ? Math.min((overallProgress / overallTotal) * 100, 100) : 0,
+            timestamp: new Date().toISOString()
+        })
+    }, [overallProgress, overallTotal, isActive])
 
-    // Всегда показываем статусную строку, но делаем её неактивной когда нет загрузки
+    // Рассчитываем процент общего прогресса
+    const overallPercentage = overallTotal > 0 ? Math.min((overallProgress / overallTotal) * 100, 100) : 0;
+
+    // Форматируем числа для отображения
+    const formatNumber = (num: number) => {
+        if (num >= 1000) {
+            return (num / 1000).toFixed(1) + 'k';
+        }
+        return num.toString();
+    };
 
     return (
         <div className={`border border-gray-200 rounded-lg p-4 mb-4 shadow-sm transition-all duration-300 ${isActive
-                ? 'bg-white border-blue-200 shadow-md'
-                : 'bg-gray-50 border-gray-200 opacity-60'
+            ? 'bg-white border-blue-200 shadow-md'
+            : 'bg-gray-50 border-gray-200 opacity-60'
             }`}>
             <div className="space-y-3">
                 {/* Общий прогресс загрузки */}
@@ -34,35 +52,21 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
                             📥 {isActive ? 'Загрузка файлов из очереди' : 'Очередь загрузки'}
                         </span>
                         <span className="text-sm text-gray-600">
-                            {overallProgress} из {overallTotal} ({overallPercentage.toFixed(1)}%)
+                            {formatNumber(overallProgress)} из {formatNumber(overallTotal)} ({overallPercentage.toFixed(1)}%)
                         </span>
                     </div>
                     <div className={`w-full rounded-full h-3 ${isActive ? 'bg-gray-200' : 'bg-gray-100'}`}>
                         <div
-                            className={`h-3 rounded-full transition-all duration-300 ease-out ${isActive
-                                    ? 'bg-blue-600'
-                                    : overallProgress > 0
-                                        ? 'bg-gray-400'
-                                        : 'bg-transparent'
+                            className={`h-3 rounded-full transition-all duration-500 ease-out ${isActive
+                                ? 'bg-gradient-to-r from-blue-500 to-blue-600'
+                                : overallProgress > 0
+                                    ? 'bg-gray-400'
+                                    : 'bg-transparent'
                                 }`}
                             style={{ width: `${overallPercentage}%` }}
                         />
                     </div>
                 </div>
-
-                {/* Убираем отображение текущего файла - он показывается в плашке трека */}
-
-                {/* Статус */}
-                {isActive && (
-                    <div className="flex items-center justify-center">
-                        <div className="flex items-center space-x-2">
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                            <span className="text-sm text-gray-600">
-                                {overallProgress < overallTotal ? 'Загружается...' : 'Завершено!'}
-                            </span>
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );
