@@ -98,9 +98,6 @@ function FileAnalyzer() {
     }
   }
 
-  const analyzeFiles = async () => {
-    await loadData()
-  }
 
   const handleSelectDownloadPath = () => {
     setIsFolderBrowserOpen(true)
@@ -122,7 +119,7 @@ function FileAnalyzer() {
       if (response.ok) {
         setDownloadPath(selectedPath)
         // Обновляем анализ файлов с новым путем
-        await analyzeFiles()
+        await loadData()
       } else {
         console.error('Ошибка при сохранении пути')
         alert('Ошибка при сохранении пути')
@@ -233,10 +230,9 @@ function FileAnalyzer() {
   }
 
   const getQualityBadgeColor = (quality: string) => {
-    // Улучшенная логика определения цвета с учетом и битрейта, и частоты дискретизации
+    // Улучшенная логика определения цвета с учетом битрейта
     // Извлекаем параметры качества
     let bitDepth = 0
-    let sampleRate = 0
     let bitrate = 0
     
     // Парсим битовую глубину
@@ -246,17 +242,6 @@ function FileAnalyzer() {
       bitDepth = 16
     } else if (quality.includes('32-bit')) {
       bitDepth = 32
-    }
-    
-    // Парсим частоту дискретизации
-    if (quality.includes('48.0kHz') || quality.includes('48kHz')) {
-      sampleRate = 48000
-    } else if (quality.includes('44.1kHz') || quality.includes('44kHz')) {
-      sampleRate = 44100
-    } else if (quality.includes('32kHz')) {
-      sampleRate = 32000
-    } else if (quality.includes('22kHz')) {
-      sampleRate = 22000
     }
     
     // Парсим битрейт
@@ -395,15 +380,6 @@ function FileAnalyzer() {
           <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Анализ файлов</h2>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            onClick={analyzeFiles}
-            disabled={loading}
-            icon={RefreshCw}
-            loading={loading}
-          >
-            Обновить анализ
-          </Button>
           <Button
             variant="primary"
             onClick={scanFilesystem}

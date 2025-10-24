@@ -1,21 +1,22 @@
 import {
-  AlertCircle,
-  Download,
-  FileText,
-  FolderOpen,
-  FolderPlus,
-  HelpCircle,
-  Info,
-  Key,
-  Palette,
-  Power,
-  RefreshCw,
-  Save,
-  ScrollText,
-  Settings as SettingsIcon,
-  Trash2,
-  Wifi,
-  WifiOff
+    AlertCircle,
+    CheckCircle,
+    Download,
+    FileText,
+    FolderOpen,
+    FolderPlus,
+    HelpCircle,
+    Info,
+    Key,
+    Palette,
+    Power,
+    RefreshCw,
+    Save,
+    ScrollText,
+    Settings as SettingsIcon,
+    Trash2,
+    Wifi,
+    WifiOff
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import FolderBrowser from './FolderBrowser'
@@ -45,17 +46,25 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  
+  // Состояние для проверки файлов
+  const [isCheckingFiles, setIsCheckingFiles] = useState(false)
+  const [fileCheckResult, setFileCheckResult] = useState<any>(null)
+  
+  // Состояние для отображения количества файлов
+  const [totalFilesCount, setTotalFilesCount] = useState<number>(0)
 
 
   // Состояние для UI
   const [isTokenHelperOpen, setIsTokenHelperOpen] = useState(false)
   const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false)
-  const [activeSection, setActiveSection] = useState<'tokens' | 'download' | 'logs'>('tokens')
+  const [activeSection, setActiveSection] = useState<'tokens' | 'download' | 'logs' | 'system'>('tokens')
 
   // Загрузка настроек при монтировании компонента
   useEffect(() => {
     loadSettings()
     loadLogStats()
+    loadFilesCount()
   }, [])
 
   // Загрузка логов при изменении типа или количества строк
@@ -89,6 +98,19 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
       console.error('Ошибка загрузки настроек:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  // Функция для загрузки количества файлов
+  const loadFilesCount = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/stats')
+      if (response.ok) {
+        const data = await response.json()
+        setTotalFilesCount(data.totalTracks || 0)
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки количества файлов:', error)
     }
   }
 
@@ -303,6 +325,37 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
     } catch (error) {
       console.error('Ошибка при остановке сканирования:', error)
       alert(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+    }
+  }
+
+  const handleCheckFiles = async () => {
+    setIsCheckingFiles(true)
+    setFileCheckResult(null)
+
+    try {
+      const response = await fetch('http://localhost:8000/api/files/check-missing', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        setFileCheckResult(result)
+        // Обновляем количество файлов после проверки
+        await loadFilesCount()
+        console.log('Проверка файлов завершена:', result)
+      } else {
+        const error = await response.json()
+        console.error('Ошибка проверки файлов:', error)
+        alert(`Ошибка проверки файлов: ${error.detail || 'Неизвестная ошибка'}`)
+      }
+    } catch (error) {
+      console.error('Ошибка проверки файлов:', error)
+      alert(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+    } finally {
+      setIsCheckingFiles(false)
     }
   }
 
@@ -749,7 +802,116 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                     </div>
                   </div>
                 </div>
+
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-6 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle size={20} className="text-blue-600 dark:text-blue-400 mt-0.5" />
+                    <div className="flex-1">
+                      <h5 className="font-medium text-blue-800 dark:text-blue-200 mb-2">Проверка файлов</h5>
+                      <div className="mb-3 p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <FileText size={16} className="text-blue-600 dark:text-blue-400" />
+                          <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                            Всего файлов в базе данных: <span className="font-bold">{totalFilesCount.toLocaleString()}</span>
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-sm text-blue-700 dark:text-blue-300 mb-4">
+                        Проверить физическое наличие файлов и удалить записи о несуществующих файлах из базы данных.
+                        Это поможет очистить базу от "мертвых" записей.
+                      </p>
+                      <Button
+                        onClick={handleCheckFiles}
+                        disabled={isCheckingFiles}
+                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        <CheckCircle size={16} className={isCheckingFiles ? 'animate-spin' : ''} />
+                        {isCheckingFiles ? 'Проверка...' : 'Проверить файлы'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
+
+              {/* Результаты проверки файлов */}
+              {fileCheckResult && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle size={20} className="text-primary-500" />
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Результаты проверки файлов</h4>
+                  </div>
+                  
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-6 rounded-lg border border-green-200 dark:border-green-800">
+                    <div className="space-y-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600 dark:text-green-400 mb-2">
+                          ✅ Проверка завершена
+                        </div>
+                        <p className="text-sm text-green-700 dark:text-green-300">
+                          {fileCheckResult.message}
+                        </p>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="text-center">
+                          <div className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                            {fileCheckResult.details.total_checked}
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">Проверено</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                            {fileCheckResult.details.existing_files}
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">Найдено</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-xl font-bold text-red-600 dark:text-red-400">
+                            {fileCheckResult.details.missing_files}
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">Отсутствует</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-xl font-bold text-orange-600 dark:text-orange-400">
+                            {fileCheckResult.details.deleted_records}
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">Удалено</div>
+                        </div>
+                      </div>
+                      
+                      {fileCheckResult.details.checked_tables && (
+                        <div className="mt-4">
+                          <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-2">
+                            Проверенные таблицы:
+                          </h5>
+                          <div className="flex flex-wrap gap-2">
+                            {fileCheckResult.details.checked_tables.map((table: string, index: number) => (
+                              <span key={index} className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-lg text-sm font-mono">
+                                {table}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {fileCheckResult.details.missing_file_details && fileCheckResult.details.missing_file_details.length > 0 && (
+                        <div className="mt-4">
+                          <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-2">
+                            Удаленные записи:
+                          </h5>
+                          <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg max-h-32 overflow-y-auto">
+                            {fileCheckResult.details.missing_file_details.map((file: any, index: number) => (
+                              <div key={index} className="text-sm text-gray-600 dark:text-gray-400 py-1">
+                                • {file.title} - {file.artist} ({file.playlist_id}) [{file.table_name}]
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Информация о системе */}
               <div className="space-y-4">

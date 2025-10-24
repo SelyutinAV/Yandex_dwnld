@@ -13,8 +13,6 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     overallProgress,
     overallTotal,
     currentProgress: _currentProgress = 0,
-    currentFileName = '',
-    currentStatus = '',
     isActive
 }) => {
     // ТОЧКА КОНТРОЛЯ: Логируем изменения в ProgressBar

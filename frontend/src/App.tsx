@@ -16,7 +16,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-      <header className="bg-gradient-to-r from-primary-500 to-secondary-500 text-white shadow-lg">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-primary-500 to-secondary-500 text-white shadow-lg">
         <div className="max-w-7xl mx-auto px-8 py-6">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
@@ -34,7 +34,7 @@ function AppContent() {
         </div>
       </header>
 
-      <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <nav className="fixed top-[88px] left-0 right-0 z-40 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-8">
           <div className="flex gap-2">
             <button
@@ -81,7 +81,7 @@ function AppContent() {
         </div>
       </nav>
 
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-8 pt-[160px]">
         <div className="max-w-7xl mx-auto">
           {activeTab === 'playlists' && <PlaylistManager key={state.refreshTrigger} />}
           {activeTab === 'downloads' && <DownloadQueue key={state.refreshTrigger} />}

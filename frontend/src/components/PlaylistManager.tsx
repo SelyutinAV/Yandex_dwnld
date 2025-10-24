@@ -18,10 +18,6 @@ function PlaylistManager() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedPlaylists, setSelectedPlaylists] = useState<Set<string>>(new Set())
-  const [downloadStats, setDownloadStats] = useState({
-    totalDownloaded: 0,
-    totalSizeGB: 0
-  })
   const [playlistProgress, setPlaylistProgress] = useState<{ [key: string]: number }>({})
   const { state } = useAppContext()
 
@@ -52,20 +48,6 @@ function PlaylistManager() {
     }
   }
 
-  const loadDownloadStats = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/downloads/stats')
-      if (response.ok) {
-        const data = await response.json()
-        setDownloadStats({
-          totalDownloaded: data.summary.totalDownloaded,
-          totalSizeGB: data.summary.totalSizeGB
-        })
-      }
-    } catch (error) {
-      console.error('Ошибка загрузки статистики:', error)
-    }
-  }
 
   const loadPlaylistProgress = async () => {
     try {
@@ -107,7 +89,6 @@ function PlaylistManager() {
 
   useEffect(() => {
     loadPlaylists()
-    loadDownloadStats()
     loadPlaylistProgress()
   }, [])
 
@@ -115,7 +96,6 @@ function PlaylistManager() {
   useEffect(() => {
     if (state.refreshTrigger > 0) {
       loadPlaylists()
-      loadDownloadStats()
       loadPlaylistProgress()
     }
   }, [state.refreshTrigger])
@@ -190,10 +170,6 @@ function PlaylistManager() {
       <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Мои плейлисты</h2>
-          <div className="mt-2 flex gap-4 text-sm text-gray-600 dark:text-gray-400">
-            <span>📥 Всего скачано: <strong className="text-success-600 dark:text-success-400">{downloadStats.totalDownloaded}</strong></span>
-            <span>💾 Размер: <strong className="text-primary-600 dark:text-primary-400">{downloadStats.totalSizeGB.toFixed(1)} ГБ</strong></span>
-          </div>
         </div>
         <div className="flex gap-4">
           <Button

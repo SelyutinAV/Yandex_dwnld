@@ -35,7 +35,8 @@ function DownloadQueue() {
     errorsInQueue: 0,
     totalDownloaded: 0,
     totalSizeMB: 0,
-    totalSizeGB: 0
+    totalSizeGB: 0,
+    totalInSession: 0  // Общее количество треков в очереди
   })
   const [progressData, setProgressData] = useState({
     is_active: false,
@@ -97,7 +98,13 @@ function DownloadQueue() {
         loadQueue()
         loadDownloadStats()
         loadProgress()  // Добавляем обновление прогресса
+      } else {
+        // Если нет активных загрузок, обновляем только статистику (для отображения обновленных данных)
+        loadDownloadStats()
       }
+      
+      // ВСЕГДА обновляем статистику для отображения актуальных данных
+      loadDownloadStats()
     }, 3000)  // Увеличен интервал до 3 секунд
 
     return () => clearInterval(interval)
@@ -146,6 +153,8 @@ function DownloadQueue() {
         // Обновляем только если данные изменились
         if (JSON.stringify(tracks) !== JSON.stringify(newQueue)) {
           setTracks(newQueue)
+          // Принудительно обновляем статистику при изменении очереди
+          loadDownloadStats()
         }
       }
     } catch (error) {
@@ -165,21 +174,33 @@ function DownloadQueue() {
       const response = await fetch('http://localhost:8000/api/queue/stats')
       if (response.ok) {
         const data = await response.json()
+        
+        // Получаем общую статистику
+        const generalStats = data.general_stats || {}
+        
+        // Получаем статистику текущей сессии
+        const sessionStats = data.session_stats || {}
+        
         // Преобразуем данные в формат, ожидаемый компонентом
         setDownloadStats({
-          totalInQueue: data.total,
-          completedInQueue: data.completed,
-          downloadingInQueue: data.downloading,
-          pendingInQueue: data.pending,
-          queuedInQueue: data.queued,
-          errorsInQueue: data.errors,
-          totalDownloaded: data.completed, // Используем completed как totalDownloaded
-          totalSizeMB: 0, // Пока не реализовано
-          totalSizeGB: 0  // Пока не реализовано
+          // Общая статистика
+          totalInQueue: generalStats.total_files || 0,
+          totalDownloaded: generalStats.total_files || 0,
+          totalSizeMB: generalStats.total_size_mb || 0,
+          totalSizeGB: generalStats.total_size_gb || 0,
+          
+          // Статистика текущей сессии
+          completedInQueue: sessionStats.completed || 0,
+          downloadingInQueue: sessionStats.downloading || 0,
+          pendingInQueue: sessionStats.pending || 0,
+          queuedInQueue: sessionStats.queued || 0,
+          errorsInQueue: sessionStats.errors || 0,
+          totalInSession: sessionStats.total_in_queue || 0  // Общее количество треков в очереди
         })
 
         // Обновляем состояние паузы
-        setIsPaused(data.is_paused === true)
+        const systemState = data.system_state || {}
+        setIsPaused(systemState.is_paused === true)
 
         // НЕ сбрасываем progressData здесь - это вызывает прыжки!
         // setProgressData будет обновлен в loadProgress()
@@ -451,10 +472,6 @@ function DownloadQueue() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Очередь загрузок</h2>
-            <div className="mt-2 flex gap-4 text-sm text-gray-600 dark:text-gray-400">
-              <span>📥 Всего скачано: <strong className="text-success-600 dark:text-success-400">{downloadStats.totalDownloaded}</strong></span>
-              <span>💾 Размер: <strong className="text-primary-600 dark:text-primary-400">{downloadStats.totalSizeGB.toFixed(1)} ГБ</strong></span>
-            </div>
           </div>
 
           {/* Плашка статуса */}
@@ -496,10 +513,48 @@ function DownloadQueue() {
           </div>
         )}
 
-        {/* Красивая статистика */}
+        {/* Общая статистика */}
         <Card className="mb-6 p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-            📊 Статистика
+            📈 Общая статистика
+          </h3>
+          <div className="grid grid-cols-3 gap-4">
+            {/* Всего файлов */}
+            <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg p-4 border-l-4 border-green-500">
+              <div className="text-xs uppercase tracking-wide text-green-700 dark:text-green-400 font-semibold mb-1">
+                Всего файлов
+              </div>
+              <div className="text-3xl font-bold text-green-900 dark:text-green-200">
+                {downloadStats.totalInQueue}
+              </div>
+            </div>
+
+            {/* Общий размер */}
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-4 border-l-4 border-blue-500">
+              <div className="text-xs uppercase tracking-wide text-blue-700 dark:text-blue-400 font-semibold mb-1">
+                Общий размер
+              </div>
+              <div className="text-3xl font-bold text-blue-900 dark:text-blue-200">
+                {downloadStats.totalSizeGB.toFixed(1)} ГБ
+              </div>
+            </div>
+
+            {/* Размер в МБ */}
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg p-4 border-l-4 border-purple-500">
+              <div className="text-xs uppercase tracking-wide text-purple-700 dark:text-purple-400 font-semibold mb-1">
+                Размер (МБ)
+              </div>
+              <div className="text-3xl font-bold text-purple-900 dark:text-purple-200">
+                {downloadStats.totalSizeMB.toFixed(0)}
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Статистика текущей сессии */}
+        <Card className="mb-6 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+            📋 Текущая сессия
           </h3>
           <div className="grid grid-cols-6 gap-3">
             {/* Ожидает */}
@@ -576,7 +631,7 @@ function DownloadQueue() {
                 Всего
               </div>
               <div className="text-2xl font-bold text-gray-900 dark:text-gray-200">
-                {downloadStats.totalInQueue}
+                {downloadStats.totalInSession}
               </div>
             </div>
           </div>
@@ -668,7 +723,6 @@ function DownloadQueue() {
                 icon={RefreshCw}
                 size="lg"
                 className="text-lg font-bold shadow-lg hover:shadow-xl transition-all"
-                title="Принудительно перезапустить воркер загрузки"
               >
                 🔄 Перезапустить
               </Button>

@@ -16,7 +16,7 @@ class DownloadedTrack(Base):
     __tablename__ = 'downloaded_tracks'
     
     id = Column(Integer, primary_key=True)
-    track_id = Column(String, unique=True, nullable=False)
+    track_id = Column(String, nullable=False)  # Убрали unique=True
     title = Column(String, nullable=False)
     artist = Column(String, nullable=False)
     album = Column(String)
@@ -53,6 +53,7 @@ class DownloadQueue(Base):
     title = Column(String, nullable=False)
     artist = Column(String, nullable=False)
     album = Column(String)
+    playlist_id = Column(String)
     status = Column(String, default='pending')  # pending, downloading, completed, error
     progress = Column(Integer, default=0)
     quality = Column(String)
