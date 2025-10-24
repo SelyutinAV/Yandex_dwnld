@@ -3,13 +3,14 @@
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 import os
-import asyncio
-import logging
+
+# import asyncio  # Не используется
+# import logging  # Не используется
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
@@ -138,13 +139,29 @@ def update_yandex_client(token: Optional[str] = None):
     # Получаем токен из базы данных если не передан
     if not token:
         try:
-            # Получаем активный токен
-            active_token = db_manager.get_active_token()
-            if active_token:
-                token = active_token["token"]
+            # Сначала пробуем получить активный аккаунт из новой структуры
+            active_account = db_manager.get_active_account()
+            if active_account:
+                # Используем OAuth токен как основной, если есть
+                token = active_account.get("oauth_token") or active_account.get(
+                    "session_id_token"
+                )
+                print(
+                    f"✅ Используем токен из активного аккаунта: {active_account['name']}"
+                )
             else:
-                # Если нет активного токена, пробуем старый способ
-                token = db_manager.get_setting("yandex_token")
+                # Fallback на старую структуру для совместимости
+                active_token = db_manager.get_active_token()
+                if active_token:
+                    token = active_token["token"]
+                    print(
+                        "⚠️  Используем токен из старой структуры (рекомендуется миграция)"
+                    )
+                else:
+                    # Если нет активного токена, пробуем старый способ
+                    token = db_manager.get_setting("yandex_token")
+                    if token:
+                        print("⚠️  Используем токен из настроек (устаревший способ)")
         except Exception as e:
             print(f"Ошибка получения токена из БД: {e}")
             token = None
@@ -173,10 +190,10 @@ def update_yandex_client(token: Optional[str] = None):
                     download_path=download_path,
                 )
 
-                print(f"Клиент Яндекс.Музыка успешно инициализирован")
-                print(f"✅ Менеджер очереди загрузок инициализирован")
+                print("Клиент Яндекс.Музыка успешно инициализирован")
+                print("✅ Менеджер очереди загрузок инициализирован")
             else:
-                print(f"Не удалось подключиться к Яндекс.Музыке с токеном")
+                print("Не удалось подключиться к Яндекс.Музыке с токеном")
                 yandex_client = None
         except Exception as e:
             print(f"Ошибка инициализации клиента Яндекс.Музыки: {e}")
@@ -420,7 +437,7 @@ async def test_dual_tokens(request: DualTokenTest):
 
                                     json.dumps(value)
                                     subscription_dict[key] = value
-                                except:
+                                except Exception:
                                     # Если не сериализуется, преобразуем в строку
                                     subscription_dict[key] = str(value)
                         elif hasattr(subscription, "items"):
@@ -437,9 +454,9 @@ async def test_dual_tokens(request: DualTokenTest):
 
                                                 json.dumps(value)
                                                 subscription_dict[attr] = value
-                                            except:
+                                            except Exception:
                                                 subscription_dict[attr] = str(value)
-                                    except:
+                                    except Exception:
                                         pass
                     except Exception as e:
                         print(f"Ошибка при преобразовании subscription: {e}")
@@ -763,6 +780,340 @@ async def update_token_username_endpoint(token_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Новые эндпоинты для работы с едиными аккаунтами Яндекс.Музыки
+class SaveAccountRequest(BaseModel):
+    name: str
+    oauth_token: Optional[str] = None
+    session_id_token: Optional[str] = None
+    username: Optional[str] = None
+
+
+class ActivateAccountRequest(BaseModel):
+    account_id: int
+
+
+@app.get("/api/accounts/{account_id}/full-tokens")
+async def get_account_full_tokens(account_id: int):
+    """Получить полные токены аккаунта для отображения"""
+    try:
+        account = db_manager.get_account_by_id(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Аккаунт не найден")
+
+        return {
+            "oauth_token": account.get("oauth_token"),
+            "session_id_token": account.get("session_id_token"),
+            "oauth_token_preview": (
+                account.get("oauth_token", "")[:50] + "..."
+                if account.get("oauth_token")
+                and len(account.get("oauth_token", "")) > 50
+                else account.get("oauth_token")
+            ),
+            "session_id_token_preview": (
+                account.get("session_id_token", "")[:50] + "..."
+                if account.get("session_id_token")
+                and len(account.get("session_id_token", "")) > 50
+                else account.get("session_id_token")
+            ),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/accounts/{account_id}/tokens")
+async def get_account_tokens(account_id: int):
+    """Получить полные токены аккаунта"""
+    try:
+        account = db_manager.get_account_by_id(account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Аккаунт не найден")
+
+        return {
+            "oauth_token": account.get("oauth_token"),
+            "session_id_token": account.get("session_id_token"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/accounts")
+async def get_accounts():
+    """Получить список аккаунтов"""
+    try:
+        return db_manager.get_all_accounts()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/accounts/save")
+async def save_account_endpoint(request: SaveAccountRequest):
+    """Сохранить аккаунт"""
+    try:
+        # Проверяем токены если они предоставлены
+        if request.oauth_token:
+            test_client = YandexMusicClient(request.oauth_token)
+            if not test_client.connect():
+                raise HTTPException(
+                    status_code=400, detail="OAuth токен не прошел проверку"
+                )
+
+        if request.session_id_token:
+            test_client = YandexMusicClient(request.session_id_token)
+            if not test_client.connect():
+                raise HTTPException(
+                    status_code=400, detail="Session ID токен не прошел проверку"
+                )
+
+        # Получаем username из OAuth токена если не предоставлен
+        username = request.username
+        if not username and request.oauth_token:
+            try:
+                test_client = YandexMusicClient(request.oauth_token)
+                if test_client.connect() and test_client.client:
+                    account = test_client.client.account_status()
+                    if account and account.account:
+                        username = account.account.login
+                        print(f"Получен username из OAuth токена: {username}")
+            except Exception as e:
+                print(f"Не удалось получить username из OAuth токена: {e}")
+
+        # Сохраняем аккаунт
+        account_id = db_manager.save_account(
+            name=request.name,
+            oauth_token=request.oauth_token,
+            session_id_token=request.session_id_token,
+            username=username,
+            is_active=True,
+        )
+
+        # Обновляем глобальный клиент
+        update_yandex_client()
+
+        return {
+            "status": "success",
+            "message": "Аккаунт сохранен и активирован",
+            "account_id": account_id,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/accounts/activate")
+async def activate_account_endpoint(request: ActivateAccountRequest):
+    """Активировать аккаунт"""
+    try:
+        success = db_manager.activate_account(request.account_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Аккаунт не найден")
+
+        # Обновляем глобальный клиент
+        update_yandex_client()
+
+        return {"status": "success", "message": "Аккаунт активирован"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/accounts/deactivate")
+async def deactivate_account_endpoint(request: ActivateAccountRequest):
+    """Деактивировать аккаунт"""
+    try:
+        success = db_manager.deactivate_account(request.account_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Аккаунт не найден")
+
+        return {"status": "success", "message": "Аккаунт деактивирован"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/accounts/{account_id}")
+async def delete_account_endpoint(account_id: int):
+    """Удалить аккаунт"""
+    try:
+        success = db_manager.delete_account(account_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Аккаунт не найден")
+
+        return {"status": "success", "message": "Аккаунт удален"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class RenameAccountRequest(BaseModel):
+    name: str
+
+
+@app.put("/api/accounts/{account_id}/rename")
+async def rename_account_endpoint(account_id: int, request: RenameAccountRequest):
+    """Переименовать аккаунт"""
+    try:
+        success = db_manager.rename_account(account_id, request.name)
+        if not success:
+            raise HTTPException(status_code=404, detail="Аккаунт не найден")
+
+        return {"status": "success", "message": "Аккаунт переименован"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/accounts/{account_id}/update-username")
+async def update_account_username_endpoint(account_id: int):
+    """Обновить username аккаунта из API"""
+    try:
+        # Получаем аккаунт
+        account_info = db_manager.get_account_by_id(account_id)
+        if not account_info:
+            raise HTTPException(status_code=404, detail="Аккаунт не найден")
+
+        # Тестируем OAuth токен и получаем username
+        username = None
+        if account_info.get("oauth_token"):
+            try:
+                test_client = YandexMusicClient(account_info["oauth_token"])
+                if test_client.connect() and test_client.client:
+                    account = test_client.client.account_status()
+                    if account and account.account:
+                        username = account.account.login
+                        print(
+                            f"Обновлен username для аккаунта {account_id}: {username}"
+                        )
+            except Exception as e:
+                print(f"Не удалось получить username: {e}")
+
+        if username:
+            success = db_manager.update_account_username(account_id, username)
+            if not success:
+                raise HTTPException(
+                    status_code=500, detail="Не удалось обновить username"
+                )
+
+            return {"status": "success", "message": f"Username обновлен: {username}"}
+        else:
+            raise HTTPException(
+                status_code=400, detail="Не удалось получить username из токена"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/accounts/test-dual")
+async def test_dual_account_tokens(request: DualTokenTest):
+    """Тестирование обоих токенов аккаунта"""
+    try:
+        # Проверяем OAuth токен
+        oauth_client = YandexMusicClient(request.oauth_token)
+        oauth_success = oauth_client.connect()
+
+        # Проверяем Session ID токен
+        session_client = YandexMusicClient(request.session_id_token)
+        session_success = session_client.connect()
+
+        if oauth_success and session_success:
+            # Оба токена работают - проверяем подписку и lossless-доступ
+            has_subscription = False
+            has_lossless_access = False
+            subscription_dict = None
+
+            try:
+                if oauth_client.client:
+                    account = oauth_client.client.account_status()
+                    subscription = account.subscription
+
+                    print(f"Full account status: {account}")
+
+                    if subscription:
+                        has_subscription = True
+                        subscription_dict = {
+                            "can_start_trial": getattr(
+                                subscription, "can_start_trial", False
+                            ),
+                            "had_any_subscription": getattr(
+                                subscription, "had_any_subscription", False
+                            ),
+                            "non_auto_renewable": getattr(
+                                subscription, "non_auto_renewable", False
+                            ),
+                            "auto_renewable": getattr(
+                                subscription, "auto_renewable", False
+                            ),
+                        }
+
+                        # Проверяем доступ к lossless
+                        if (
+                            hasattr(subscription, "auto_renewable")
+                            and subscription.auto_renewable
+                        ):
+                            has_lossless_access = True
+                        elif (
+                            hasattr(subscription, "non_auto_renewable")
+                            and subscription.non_auto_renewable
+                        ):
+                            has_lossless_access = True
+
+                    print(f"Subscription info: {subscription_dict}")
+                    print(f"Has subscription: {has_subscription}")
+                    print(f"Has lossless access: {has_lossless_access}")
+
+            except Exception as e:
+                print(f"Ошибка получения информации о подписке: {e}")
+
+            return {
+                "status": "success",
+                "message": "Оба токена работают корректно",
+                "oauth_valid": True,
+                "session_id_valid": True,
+                "has_subscription": has_subscription,
+                "has_lossless_access": has_lossless_access,
+                "subscription_details": subscription_dict,
+            }
+        elif oauth_success:
+            return {
+                "status": "partial",
+                "message": "OAuth токен работает, Session ID токен не работает",
+                "oauth_valid": True,
+                "session_id_valid": False,
+                "has_subscription": False,
+                "has_lossless_access": False,
+            }
+        elif session_success:
+            return {
+                "status": "partial",
+                "message": "Session ID токен работает, OAuth токен не работает",
+                "oauth_valid": False,
+                "session_id_valid": True,
+                "has_subscription": False,
+                "has_lossless_access": False,
+            }
+        else:
+            raise HTTPException(
+                status_code=401,
+                detail="Оба токена не прошли проверку. Проверьте правильность токенов.",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/playlists", response_model=List[Playlist])
 async def get_playlists():
     """Получить список плейлистов пользователя (быстрая загрузка без обложек)"""
@@ -773,15 +1124,22 @@ async def get_playlists():
                 detail="Клиент не инициализирован. Проверьте токен в настройках.",
             )
 
-        # Получаем username из активного токена
+        # Получаем username из активного аккаунта
         username = None
         try:
-            active_token = db_manager.get_active_token()
-            if active_token and active_token.get("username"):
-                username = active_token["username"]
-                print(f"Используем username из токена: {username}")
+            # Сначала пробуем получить из новой структуры
+            active_account = db_manager.get_active_account()
+            if active_account and active_account.get("username"):
+                username = active_account["username"]
+                print(f"Используем username из активного аккаунта: {username}")
+            else:
+                # Fallback на старую структуру
+                active_token = db_manager.get_active_token()
+                if active_token and active_token.get("username"):
+                    username = active_token["username"]
+                    print(f"Используем username из старого токена: {username}")
         except Exception as e:
-            print(f"Ошибка получения username из токена: {e}")
+            print(f"Ошибка получения username: {e}")
 
         # Быстрая загрузка без обложек
         playlists = yandex_client.get_playlists(username)
@@ -1949,12 +2307,14 @@ async def get_track_cover(track_id: str):
             else:
                 # Возвращаем placeholder изображение если обложка не найдена
                 from fastapi.responses import Response
-                import base64
+
+                # import base64  # Не используется
 
                 # Простое SVG изображение как placeholder
-                svg_placeholder = f"""<svg width="48" height="48" xmlns="http://www.w3.org/2000/svg">
+                svg_placeholder = """<svg width="48" height="48" xmlns="http://www.w3.org/2000/svg">
                     <rect width="48" height="48" fill="#f3f4f6"/>
-                    <text x="24" y="24" text-anchor="middle" dy=".3em" font-family="Arial" font-size="12" fill="#6b7280">🎵</text>
+                    <text x="24" y="24" text-anchor="middle" dy=".3em" 
+                          font-family="Arial" font-size="12" fill="#6b7280">🎵</text>
                 </svg>"""
 
                 return Response(
@@ -2123,7 +2483,7 @@ async def get_log_stats():
                 try:
                     with open(log_file, "r", encoding="utf-8") as f:
                         lines_count = sum(1 for _ in f)
-                except:
+                except Exception:
                     lines_count = 0
 
                 stats[log_file.name] = {
@@ -2165,9 +2525,14 @@ class RemoveTracksRequest(BaseModel):
 
 @app.post("/api/downloads/remove-selected")
 async def remove_selected_tracks(request: RemoveTracksRequest):
-    """Удалить выбранные треки из очереди"""
+    """Удалить выбранные треки из очереди (оптимизированная версия)"""
     try:
-        removed_count = db_manager.remove_from_queue(request.track_ids)
+        # Используем батчевую обработку для больших списков
+        if len(request.track_ids) > 500:
+            removed_count = db_manager.bulk_remove_from_queue(request.track_ids)
+        else:
+            removed_count = db_manager.remove_from_queue(request.track_ids)
+
         return {
             "status": "success",
             "message": f"Удалено треков: {removed_count}",

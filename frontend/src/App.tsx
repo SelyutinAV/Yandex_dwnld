@@ -6,6 +6,7 @@ import PlaylistManager from './components/PlaylistManager'
 import SettingsPanel from './components/SettingsPanel'
 import { StatusBadge } from './components/ui/StatusBadge'
 import { AppProvider, useAppContext } from './contexts/AppContext'
+import { useTheme } from './hooks/useTheme'
 
 type Tab = 'playlists' | 'downloads' | 'files' | 'settings'
 
@@ -13,6 +14,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<Tab>('playlists')
   const [isConnected, setIsConnected] = useState(false)
   const { state } = useAppContext()
+  const { isLoaded } = useTheme()
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
@@ -83,7 +85,7 @@ function AppContent() {
 
       <main className="flex-1 p-8 pt-[160px]">
         <div className="max-w-7xl mx-auto">
-          {activeTab === 'playlists' && <PlaylistManager key={state.refreshTrigger} />}
+          {activeTab === 'playlists' && <PlaylistManager />}
           {activeTab === 'downloads' && <DownloadQueue key={state.refreshTrigger} />}
           {activeTab === 'files' && <FileAnalyzer key={state.refreshTrigger} />}
           {activeTab === 'settings' && <SettingsPanel onConnectionChange={setIsConnected} key={state.refreshTrigger} />}

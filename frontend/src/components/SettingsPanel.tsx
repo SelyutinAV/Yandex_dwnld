@@ -17,9 +17,9 @@ import {
     Trash2
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import AccountManager from './AccountManager'
 import FolderBrowser from './FolderBrowser'
 import TokenHelper from './TokenHelper'
-import TokenManager from './TokenManager'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import { ThemeToggle } from './ui/ThemeToggle'
@@ -226,6 +226,16 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const handleTokenReceived = () => {
     setIsConnected(true)
     onConnectionChange(true)
+  }
+
+  const handleAccountChange = (account: any) => {
+    if (account) {
+      setIsConnected(true)
+      onConnectionChange(true)
+    } else {
+      setIsConnected(false)
+      onConnectionChange(false)
+    }
   }
 
   const handleTokenChange = (newToken: string) => {
@@ -446,7 +456,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
         <div className="flex-1 p-6 overflow-y-auto">
           {activeSection === 'tokens' && (
             <div className="space-y-6">
-              <TokenManager onTokenChange={handleTokenChange} />
+              <AccountManager onAccountChange={handleAccountChange} />
               <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                 <Button
                   variant="secondary"

@@ -344,57 +344,7 @@ function DownloadQueue() {
     }
   }
 
-  const addTestTrack = async () => {
-    const testTracks = [
-      { track_id: `test_${Date.now()}`, title: "Test Track", artist: "Test Artist", album: "Test Album", quality: "lossless" },
-      { track_id: `test_${Date.now() + 1}`, title: "Another Track", artist: "Another Artist", album: "Another Album", quality: "hq" }
-    ]
 
-    for (const track of testTracks) {
-      try {
-        const response = await fetch('http://localhost:8000/api/downloads/add-to-queue', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(track)
-        })
-
-        if (response.ok) {
-          console.log(`Добавлен тестовый трек: ${track.title}`)
-
-          // Симулируем прогресс загрузки
-          simulateProgress(track.track_id)
-        }
-      } catch (error) {
-        console.error('Ошибка добавления тестового трека:', error)
-      }
-    }
-
-    // Обновляем очередь и уведомляем другие компоненты
-    await loadQueue()
-    triggerRefresh()
-  }
-
-  const simulateProgress = async (trackId: string) => {
-    // Симулируем прогресс загрузки
-    for (let progress = 0; progress <= 100; progress += 10) {
-      try {
-        await fetch(`http://localhost:8000/api/downloads/${trackId}/progress`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ progress })
-        })
-
-        // Небольшая задержка между обновлениями
-        await new Promise(resolve => setTimeout(resolve, 500))
-      } catch (error) {
-        console.error('Ошибка обновления прогресса:', error)
-      }
-    }
-  }
 
   const getStatusIcon = (status: Track['status']) => {
     switch (status) {
@@ -685,15 +635,6 @@ function DownloadQueue() {
               Выбрать все
             </Button>
           )}
-          {tracks.length === 0 && (
-            <Button
-              variant="primary"
-              onClick={addTestTrack}
-              size="sm"
-            >
-              Добавить тестовые треки
-            </Button>
-          )}
           {/* Показываем кнопку запуска только если нет активных загрузок */}
           {(downloadStats.pendingInQueue > 0 || downloadStats.queuedInQueue > 0) && downloadStats.downloadingInQueue === 0 && !progressData.is_active && (
             <Button
@@ -705,8 +646,8 @@ function DownloadQueue() {
               Запустить загрузку ({downloadStats.pendingInQueue + downloadStats.queuedInQueue})
             </Button>
           )}
-          {/* Показываем кнопку паузы/возобновления только если есть активные загрузки */}
-          {(downloadStats.downloadingInQueue > 0 || downloadStats.queuedInQueue > 0 || progressData.is_active) && (
+          {/* Показываем кнопку паузы/возобновления только если воркер работает и идет активная загрузка */}
+          {progressData.is_active && (downloadStats.downloadingInQueue > 0 || (isPaused && downloadStats.downloadingInQueue > 0)) && (
             <div className="flex gap-3">
               <Button
                 variant={isPaused ? "success" : "warning"}

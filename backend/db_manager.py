@@ -34,7 +34,27 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            # Таблица сохраненных токенов
+            # Новая единая таблица аккаунтов Яндекс.Музыки
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS yandex_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    username TEXT,
+                    oauth_token TEXT,
+                    session_id_token TEXT,
+                    is_active INTEGER DEFAULT 0,
+                    has_subscription INTEGER DEFAULT 0,
+                    has_lossless_access INTEGER DEFAULT 0,
+                    subscription_details TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    last_used TEXT,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            )
+
+            # Старая таблица сохраненных токенов (для совместимости)
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS saved_tokens (
@@ -123,6 +143,9 @@ class DatabaseManager:
 
             # Индексы для быстрого поиска
             cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_yandex_accounts_active ON yandex_accounts(is_active)"
+            )
+            cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_tokens_active ON saved_tokens(is_active)"
             )
             cursor.execute(
@@ -136,6 +159,9 @@ class DatabaseManager:
             )
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_download_queue_playlist_id ON download_queue(playlist_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_download_queue_track_id ON download_queue(track_id)"
             )
 
             conn.commit()
@@ -336,6 +362,290 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM saved_tokens WHERE id = ?", (token_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    # Методы для работы с едиными аккаунтами Яндекс.Музыки
+    def get_all_accounts(self) -> List[Dict]:
+        """Получить все аккаунты"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, name, username, oauth_token, session_id_token, is_active, 
+                       has_subscription, has_lossless_access, subscription_details,
+                       created_at, last_used, updated_at
+                FROM yandex_accounts
+                ORDER BY is_active DESC, last_used DESC
+            """
+            )
+
+            accounts = []
+            for row in cursor.fetchall():
+                accounts.append(
+                    {
+                        "id": row[0],
+                        "name": row[1],
+                        "username": row[2],
+                        "oauth_token_preview": (
+                            row[3][:50] + "..."
+                            if row[3] and len(row[3]) > 50
+                            else row[3]
+                        ),
+                        "session_id_token_preview": (
+                            row[4][:50] + "..."
+                            if row[4] and len(row[4]) > 50
+                            else row[4]
+                        ),
+                        "is_active": bool(row[5]),
+                        "has_subscription": bool(row[6]),
+                        "has_lossless_access": bool(row[7]),
+                        "subscription_details": row[8],
+                        "created_at": row[9],
+                        "last_used": row[10],
+                        "updated_at": row[11],
+                    }
+                )
+
+            return accounts
+
+    def get_active_account(self) -> Optional[Dict]:
+        """Получить активный аккаунт"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, name, username, oauth_token, session_id_token, 
+                       has_subscription, has_lossless_access, subscription_details,
+                       created_at, last_used, updated_at
+                FROM yandex_accounts
+                WHERE is_active = 1
+                LIMIT 1
+            """
+            )
+
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "name": row[1],
+                    "username": row[2],
+                    "oauth_token": row[3],
+                    "session_id_token": row[4],
+                    "has_subscription": bool(row[5]),
+                    "has_lossless_access": bool(row[6]),
+                    "subscription_details": row[7],
+                    "created_at": row[8],
+                    "last_used": row[9],
+                    "updated_at": row[10],
+                }
+            return None
+
+    def save_account(
+        self,
+        name: str,
+        oauth_token: str = None,
+        session_id_token: str = None,
+        username: str = None,
+        is_active: bool = True,
+        has_subscription: bool = False,
+        has_lossless_access: bool = False,
+        subscription_details: str = None,
+    ) -> int:
+        """Сохранить аккаунт"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Деактивируем все аккаунты если новый активный
+            if is_active:
+                cursor.execute("UPDATE yandex_accounts SET is_active = 0")
+
+            # Проверяем, существует ли аккаунт с таким именем
+            cursor.execute("SELECT id FROM yandex_accounts WHERE name = ?", (name,))
+            existing = cursor.fetchone()
+
+            now = datetime.now().isoformat()
+
+            if existing:
+                # Обновляем существующий аккаунт
+                cursor.execute(
+                    """
+                    UPDATE yandex_accounts 
+                    SET oauth_token = ?, session_id_token = ?, username = ?, 
+                        is_active = ?, has_subscription = ?, has_lossless_access = ?,
+                        subscription_details = ?, last_used = ?, updated_at = ?
+                    WHERE id = ?
+                """,
+                    (
+                        oauth_token,
+                        session_id_token,
+                        username,
+                        int(is_active),
+                        int(has_subscription),
+                        int(has_lossless_access),
+                        subscription_details,
+                        now,
+                        now,
+                        existing[0],
+                    ),
+                )
+                account_id = existing[0]
+            else:
+                # Создаем новый аккаунт
+                cursor.execute(
+                    """
+                    INSERT INTO yandex_accounts 
+                    (name, oauth_token, session_id_token, username, is_active, 
+                     has_subscription, has_lossless_access, subscription_details, 
+                     created_at, last_used, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        name,
+                        oauth_token,
+                        session_id_token,
+                        username,
+                        int(is_active),
+                        int(has_subscription),
+                        int(has_lossless_access),
+                        subscription_details,
+                        now,
+                        now,
+                        now,
+                    ),
+                )
+                account_id = cursor.lastrowid
+
+            conn.commit()
+            return account_id
+
+    def activate_account(self, account_id: int) -> bool:
+        """Активировать аккаунт"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Деактивируем все аккаунты
+            cursor.execute("UPDATE yandex_accounts SET is_active = 0")
+
+            # Активируем выбранный
+            cursor.execute(
+                """
+                UPDATE yandex_accounts 
+                SET is_active = 1, last_used = ?, updated_at = ?
+                WHERE id = ?
+            """,
+                (datetime.now().isoformat(), datetime.now().isoformat(), account_id),
+            )
+
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def deactivate_account(self, account_id: int) -> bool:
+        """Деактивировать аккаунт"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Деактивируем конкретный аккаунт
+            cursor.execute(
+                """
+                UPDATE yandex_accounts 
+                SET is_active = 0, updated_at = ?
+                WHERE id = ?
+            """,
+                (datetime.now().isoformat(), account_id),
+            )
+
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def rename_account(self, account_id: int, new_name: str) -> bool:
+        """Переименовать аккаунт"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "UPDATE yandex_accounts SET name = ?, updated_at = ? WHERE id = ?",
+                (new_name, datetime.now().isoformat(), account_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def update_account_username(self, account_id: int, username: str) -> bool:
+        """Обновить username аккаунта"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE yandex_accounts SET username = ?, updated_at = ? WHERE id = ?",
+                (username, datetime.now().isoformat(), account_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def update_account_subscription_info(
+        self,
+        account_id: int,
+        has_subscription: bool,
+        has_lossless_access: bool,
+        subscription_details: str = None,
+    ) -> bool:
+        """Обновить информацию о подписке аккаунта"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE yandex_accounts 
+                SET has_subscription = ?, has_lossless_access = ?, 
+                    subscription_details = ?, updated_at = ?
+                WHERE id = ?
+            """,
+                (
+                    int(has_subscription),
+                    int(has_lossless_access),
+                    subscription_details,
+                    datetime.now().isoformat(),
+                    account_id,
+                ),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_account_by_id(self, account_id: int) -> Optional[Dict]:
+        """Получить аккаунт по ID"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, name, username, oauth_token, session_id_token, is_active,
+                       has_subscription, has_lossless_access, subscription_details,
+                       created_at, last_used, updated_at
+                FROM yandex_accounts WHERE id = ?
+            """,
+                (account_id,),
+            )
+
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "name": row[1],
+                    "username": row[2],
+                    "oauth_token": row[3],
+                    "session_id_token": row[4],
+                    "is_active": bool(row[5]),
+                    "has_subscription": bool(row[6]),
+                    "has_lossless_access": bool(row[7]),
+                    "subscription_details": row[8],
+                    "created_at": row[9],
+                    "last_used": row[10],
+                    "updated_at": row[11],
+                }
+            return None
+
+    def delete_account(self, account_id: int) -> bool:
+        """Удалить аккаунт"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM yandex_accounts WHERE id = ?", (account_id,))
             conn.commit()
             return cursor.rowcount > 0
 
@@ -811,37 +1121,64 @@ class DatabaseManager:
             return stats
 
     def remove_from_queue(self, track_ids: List[str]) -> int:
-        """Удалить треки из очереди"""
+        """Удалить треки из очереди (оптимизированная версия)"""
+        if not track_ids:
+            return 0
+
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            removed_count = 0
-            for track_id in track_ids:
-                cursor.execute(
-                    "DELETE FROM download_queue WHERE track_id = ?", (track_id,)
-                )
-                removed_count += cursor.rowcount
+            # Создаем плейсхолдеры для IN запроса
+            placeholders = ",".join(["?" for _ in track_ids])
 
+            # Выполняем одно массовое удаление вместо цикла
+            cursor.execute(
+                f"DELETE FROM download_queue WHERE track_id IN ({placeholders})",
+                track_ids,
+            )
+
+            removed_count = cursor.rowcount
             conn.commit()
             return removed_count
 
+    def bulk_remove_from_queue(
+        self, track_ids: List[str], batch_size: int = 1000
+    ) -> int:
+        """Массовое удаление треков из очереди с батчевой обработкой"""
+        if not track_ids:
+            return 0
+
+        total_removed = 0
+
+        # Обрабатываем батчами для избежания слишком больших SQL запросов
+        for i in range(0, len(track_ids), batch_size):
+            batch = track_ids[i : i + batch_size]
+            total_removed += self.remove_from_queue(batch)
+
+        return total_removed
+
     def change_queue_status(self, track_ids: List[str], new_status: str) -> int:
-        """Изменить статус треков в очереди"""
+        """Изменить статус треков в очереди (оптимизированная версия)"""
+        if not track_ids:
+            return 0
+
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            updated_count = 0
-            for track_id in track_ids:
-                cursor.execute(
-                    """
-                    UPDATE download_queue 
-                    SET status = ?, updated_at = ?
-                    WHERE track_id = ?
-                """,
-                    (new_status, datetime.now().isoformat(), track_id),
-                )
-                updated_count += cursor.rowcount
+            # Создаем плейсхолдеры для IN запроса
+            placeholders = ",".join(["?" for _ in track_ids])
 
+            # Выполняем одно массовое обновление вместо цикла
+            cursor.execute(
+                f"""
+                UPDATE download_queue 
+                SET status = ?, updated_at = ?
+                WHERE track_id IN ({placeholders})
+                """,
+                [new_status, datetime.now().isoformat()] + track_ids,
+            )
+
+            updated_count = cursor.rowcount
             conn.commit()
             return updated_count
 

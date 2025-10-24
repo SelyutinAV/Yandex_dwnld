@@ -8,7 +8,6 @@ interface Playlist {
   id: string
   title: string
   track_count: number
-  cover?: string
   isSynced: boolean
   lastSync?: string
 }
@@ -19,6 +18,7 @@ function PlaylistManager() {
   const [error, setError] = useState<string | null>(null)
   const [selectedPlaylists, setSelectedPlaylists] = useState<Set<string>>(new Set())
   const [playlistProgress, setPlaylistProgress] = useState<{ [key: string]: number }>({})
+  const [hasLoaded, setHasLoaded] = useState(false)
   const { state } = useAppContext()
 
   // Функция для загрузки плейлистов с API (быстрая загрузка без обложек)
@@ -37,11 +37,8 @@ function PlaylistManager() {
       }
 
       const data = await response.json()
-      console.log('Загружено плейлистов (без обложек):', data.length)
+      console.log('Загружено плейлистов:', data.length)
       setPlaylists(data)
-      
-      // Догружаем обложки в фоне
-      loadPlaylistCovers(data)
     } catch (error) {
       console.error('Ошибка загрузки плейлистов:', error)
       setPlaylists([])
@@ -51,33 +48,6 @@ function PlaylistManager() {
     }
   }
 
-  // Функция для догрузки обложек плейлистов
-  const loadPlaylistCovers = async (playlistsData: Playlist[]) => {
-    try {
-      console.log('🔄 Начинаем догрузку обложек...')
-      
-      const response = await fetch('http://localhost:8000/api/playlists/covers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(playlistsData),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const result = await response.json()
-      if (result.success && result.playlists) {
-        console.log('✅ Обложки догружены для', result.playlists.length, 'плейлистов')
-        setPlaylists(result.playlists)
-      }
-    } catch (error) {
-      console.error('Ошибка догрузки обложек:', error)
-      // Не показываем ошибку пользователю, так как это не критично
-    }
-  }
 
 
   const loadPlaylistProgress = async () => {
@@ -119,17 +89,21 @@ function PlaylistManager() {
   }
 
   useEffect(() => {
-    loadPlaylists()
-    loadPlaylistProgress()
-  }, [])
+    // Загружаем плейлисты только при первом запуске
+    if (!hasLoaded) {
+      loadPlaylists()
+      loadPlaylistProgress()
+      setHasLoaded(true)
+    }
+  }, []) // Убираем hasLoaded из зависимостей
 
-  // Обновляем плейлисты при изменении контекста
+  // Обновляем плейлисты только при явном обновлении через refreshTrigger
   useEffect(() => {
-    if (state.refreshTrigger > 0) {
+    if (state.refreshTrigger > 0 && hasLoaded) {
       loadPlaylists()
       loadPlaylistProgress()
     }
-  }, [state.refreshTrigger])
+  }, [state.refreshTrigger, hasLoaded])
 
   const togglePlaylistSelection = (id: string) => {
     const newSelection = new Set(selectedPlaylists)
@@ -257,18 +231,7 @@ function PlaylistManager() {
               onClick={() => togglePlaylistSelection(playlist.id)}
             >
               <div className="relative w-full aspect-square bg-gradient-to-br from-gray-400 to-gray-600 dark:from-gray-600 dark:to-gray-800 rounded-lg overflow-hidden mb-4">
-                {playlist.cover ? (
-                  <img
-                    src={playlist.cover}
-                    alt={playlist.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none'
-                      e.currentTarget.nextElementSibling?.classList.remove('hidden')
-                    }}
-                  />
-                ) : null}
-                <div className={`flex items-center justify-center h-full text-gray-500 dark:text-gray-400 ${playlist.cover ? 'hidden' : ''}`}>
+                <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
                   <Music size={32} />
                 </div>
                 {playlist.isSynced && (
