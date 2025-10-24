@@ -12,7 +12,9 @@ interface ProgressBarProps {
 export const ProgressBar: React.FC<ProgressBarProps> = ({
     overallProgress,
     overallTotal,
-    currentProgress: _currentProgress = 0,
+    currentProgress = 0,
+    currentFileName,
+    currentStatus,
     isActive
 }) => {
     // ТОЧКА КОНТРОЛЯ: Логируем изменения в ProgressBar
@@ -38,33 +40,26 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     };
 
     return (
-        <div className={`border border-gray-200 rounded-lg p-4 mb-4 shadow-sm transition-all duration-300 ${isActive
-            ? 'bg-white border-blue-200 shadow-md'
-            : 'bg-gray-50 border-gray-200 opacity-60'
-            }`}>
+        <div className="border border-gray-200 rounded-lg p-4 mb-4 shadow-sm min-h-[80px] flex flex-col justify-center bg-white">
             <div className="space-y-3">
                 {/* Общий прогресс загрузки */}
                 <div>
                     <div className="flex justify-between items-center mb-2">
-                        <span className={`text-sm font-medium ${isActive ? 'text-gray-700' : 'text-gray-500'}`}>
-                            📥 {isActive ? 'Загрузка файлов из очереди' : 'Очередь загрузки'}
+                        <span className="text-sm font-medium text-gray-700">
+                            📥 Загрузка файлов из очереди
                         </span>
                         <span className="text-sm text-gray-600">
                             {formatNumber(overallProgress)} из {formatNumber(overallTotal)} ({overallPercentage.toFixed(1)}%)
                         </span>
                     </div>
-                    <div className={`w-full rounded-full h-3 ${isActive ? 'bg-gray-200' : 'bg-gray-100'}`}>
+                    <div className="w-full rounded-full h-3 bg-gray-200">
                         <div
-                            className={`h-3 rounded-full transition-all duration-500 ease-out ${isActive
-                                ? 'bg-gradient-to-r from-blue-500 to-blue-600'
-                                : overallProgress > 0
-                                    ? 'bg-gray-400'
-                                    : 'bg-transparent'
-                                }`}
+                            className="h-3 rounded-full bg-gradient-to-r from-blue-500 to-blue-600"
                             style={{ width: `${overallPercentage}%` }}
                         />
                     </div>
                 </div>
+                
             </div>
         </div>
     );

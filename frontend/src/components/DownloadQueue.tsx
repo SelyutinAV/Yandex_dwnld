@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle, Download, Music, Pause, Play, RefreshCw, RotateCcw, Trash2, X } from 'lucide-react'
+import { AlertCircle, CheckCircle, Download, Pause, Play, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAppContext } from '../contexts/AppContext'
 import { Button } from './ui/Button'
@@ -47,7 +47,7 @@ function DownloadQueue() {
     current_status: null as string | null,
     current_progress: 0
   })
-  const { triggerRefresh } = useAppContext()
+  const { } = useAppContext()
 
   // Функция для фильтрации треков по статусу
   const getFilteredTracks = () => {
@@ -233,27 +233,6 @@ function DownloadQueue() {
     }
   }
 
-  const restartWorker = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/queue/restart', {
-        method: 'POST'
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log('Воркер перезапущен:', result)
-
-        // Обновляем состояние
-        setIsPaused(false)
-        await loadQueue()
-        await loadProgress()
-      } else {
-        console.error('Ошибка перезапуска воркера')
-      }
-    } catch (error) {
-      console.error('Ошибка перезапуска воркера:', error)
-    }
-  }
 
   const removeTrack = async (trackId: string) => {
     try {
@@ -310,19 +289,6 @@ function DownloadQueue() {
     setSelectedTracks(new Set())
   }
 
-  const retrySelectedTracks = async () => {
-    for (const trackId of selectedTracks) {
-      await retryTrack(trackId)
-    }
-    clearSelection()
-  }
-
-  const removeSelectedTracks = async () => {
-    for (const trackId of selectedTracks) {
-      await removeTrack(trackId)
-    }
-    clearSelection()
-  }
 
   const clearCompleted = async () => {
     try {
@@ -359,24 +325,6 @@ function DownloadQueue() {
     }
   }
 
-  const getStatusText = (track: Track) => {
-    switch (track.status) {
-      case 'completed':
-        return 'Завершено'
-      case 'downloading':
-        return `Загрузка... ${Math.min(Math.max(track.progress || 0, 0), 100)}%`
-      case 'processing':
-        return 'Обработка...'
-      case 'error':
-        return track.error_message || 'Ошибка'
-      case 'queued':
-        return 'Подготовлен (ожидает запуска)'
-      case 'pending':
-        return 'В очереди на загрузку'
-      default:
-        return 'В очереди'
-    }
-  }
 
   const formatDate = (dateString: string) => {
     try {
@@ -418,7 +366,7 @@ function DownloadQueue() {
 
 
   return (
-    <>
+    <div className="w-full min-h-screen">
       <div className="w-full">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -436,9 +384,10 @@ function DownloadQueue() {
           </div>
         </div>
 
-        {/* Индикатор активного фильтра */}
-        {statusFilter && (
-          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+        {/* Индикатор активного фильтра - фиксированная высота */}
+        <div className="mb-4 min-h-[60px] flex items-center">
+          {statusFilter ? (
+            <div className="w-full p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
@@ -462,7 +411,10 @@ function DownloadQueue() {
               </button>
             </div>
           </div>
+          ) : (
+            <div className="w-full h-[60px]"></div>
         )}
+        </div>
 
         {/* Общая статистика */}
         <Card className="mb-6 p-6">
@@ -588,231 +540,173 @@ function DownloadQueue() {
           </div>
         </Card>
 
-        {/* Прогресс-бар загрузки */}
-        <ProgressBar
-          overallProgress={progressData.overall_progress}
-          overallTotal={progressData.overall_total}
-          currentProgress={progressData.current_progress}
-          currentFileName={undefined} // Убираем название трека из верхнего статус-бара
-          currentStatus={progressData.current_status || undefined}
-          isActive={progressData.is_active}
-        />
 
-        <div className="flex gap-2">
-          {selectedTracks.size > 0 && (
-            <>
-              <Button
-                variant="success"
-                onClick={retrySelectedTracks}
-                icon={RotateCcw}
-                size="sm"
-              >
-                Повторить ({selectedTracks.size})
-              </Button>
-              <Button
-                variant="error"
-                onClick={removeSelectedTracks}
-                icon={Trash2}
-                size="sm"
-              >
-                Удалить ({selectedTracks.size})
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={clearSelection}
-                size="sm"
-              >
-                Отменить выбор
-              </Button>
-            </>
-          )}
-          {tracks.length > 0 && selectedTracks.size === 0 && (
+        {/* Общий прогресс-бар загрузки - показываем только при активной загрузке или когда есть прогресс */}
+        {(progressData.is_active || progressData.overall_progress > 0) && (
+          <ProgressBar
+            overallProgress={progressData.overall_progress}
+            overallTotal={progressData.overall_total}
+            currentProgress={progressData.current_progress}
+            currentFileName={undefined}
+            currentStatus={progressData.current_status || undefined}
+            isActive={progressData.is_active}
+          />
+        )}
+
+        {/* Простая панель управления */}
+        <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-6">
+          <div className="grid grid-cols-4 gap-4">
             <Button
               variant="secondary"
               onClick={selectAllTracks}
               size="sm"
+              disabled={tracks.length === 0}
             >
               Выбрать все
             </Button>
-          )}
-          {/* Показываем кнопку запуска только если нет активных загрузок */}
-          {(downloadStats.pendingInQueue > 0 || downloadStats.queuedInQueue > 0) && downloadStats.downloadingInQueue === 0 && !progressData.is_active && (
+            
             <Button
               variant="success"
               onClick={startDownloadQueue}
-              size="md"
+              size="sm"
               icon={Play}
+              disabled={downloadStats.pendingInQueue === 0 && downloadStats.queuedInQueue === 0}
             >
-              Запустить загрузку ({downloadStats.pendingInQueue + downloadStats.queuedInQueue})
+              Запустить
             </Button>
-          )}
-          {/* Показываем кнопку паузы/возобновления только если воркер работает и идет активная загрузка */}
-          {progressData.is_active && (downloadStats.downloadingInQueue > 0 || (isPaused && downloadStats.downloadingInQueue > 0)) && (
-            <div className="flex gap-3">
+            
               <Button
                 variant={isPaused ? "success" : "warning"}
                 onClick={togglePause}
                 icon={isPaused ? Play : Pause}
-                size="lg"
+              size="sm"
+              disabled={!progressData.is_active}
               >
-                {isPaused ? 'Возобновить загрузку' : 'Приостановить загрузку'}
+              {isPaused ? 'Возобновить' : 'Пауза'}
               </Button>
-              <Button
-                variant="primary"
-                onClick={restartWorker}
-                icon={RefreshCw}
-                size="lg"
-              >
-                Перезапустить
-              </Button>
-            </div>
-          )}
-          {downloadStats.completedInQueue > 0 && (
+            
             <Button
               variant="error"
               onClick={clearCompleted}
               size="sm"
               icon={Trash2}
+              disabled={downloadStats.completedInQueue === 0}
             >
-              Очистить завершенные ({downloadStats.completedInQueue})
+              Очистить ({downloadStats.completedInQueue})
             </Button>
-          )}
+          </div>
         </div>
       </div>
 
-      <div className="space-y-4">
+      {/* Простая таблица треков */}
+      <div className="bg-white dark:bg-gray-900 rounded-lg overflow-hidden">
         {loading ? (
-          <Card className="flex flex-col items-center justify-center py-16 text-gray-500 dark:text-gray-400">
-            <Download size={64} className="mb-4 animate-pulse" />
-            <h3 className="text-xl font-semibold mb-2">Загрузка данных...</h3>
-            <p>Получаем информацию о загрузках</p>
-          </Card>
+          <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+            <Download size={48} className="mx-auto mb-4 animate-pulse" />
+            <p>Загрузка данных...</p>
+          </div>
         ) : tracks.length === 0 ? (
-          <Card className="flex flex-col items-center justify-center py-16 text-gray-500 dark:text-gray-400">
-            <Download size={64} className="mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Очередь пуста</h3>
-            <p>Выберите плейлисты для синхронизации</p>
-          </Card>
+          <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+            <Download size={48} className="mx-auto mb-4" />
+            <p>Очередь пуста</p>
+          </div>
         ) : (
-          getFilteredTracks().map(track => (
-            <Card
-              key={track.id}
-              className={`p-4 transition-all duration-200 ${track.status === 'completed' ? 'border-l-4 border-l-success-500' :
-                track.status === 'downloading' ? 'border-l-4 border-l-primary-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg' :
-                  track.status === 'processing' ? 'border-l-4 border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/20' :
-                    track.status === 'error' ? 'border-l-4 border-l-error-500' :
-                      track.status === 'queued' ? 'border-l-4 border-l-blue-400' :
-                        'border-l-4 border-l-gray-300 dark:border-l-gray-600'
-                }`}
-            >
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                {/* Чекбокс выбора */}
-                <div className="md:col-span-1 flex justify-center">
+          <table className="w-full">
+            <thead className="bg-gray-50 dark:bg-gray-800">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-12">
                   <input
                     type="checkbox"
-                    checked={selectedTracks.has(track.track_id)}
-                    onChange={() => toggleTrackSelection(track.track_id)}
-                    className="w-4 h-4 text-primary-600 bg-gray-100 border-gray-300 rounded focus:ring-primary-500 dark:focus:ring-primary-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                    checked={selectedTracks.size === tracks.length && tracks.length > 0}
+                    onChange={selectedTracks.size === tracks.length ? clearSelection : selectAllTracks}
+                    className="w-4 h-4"
                   />
-                </div>
-
-                {/* Обложка трека */}
-                <div className="md:col-span-1 flex justify-center">
-                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                    {track.cover ? (
-                      <img
-                        src={`http://localhost:8000/api/queue/track/${track.track_id}/cover`}
-                        alt={track.title}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none'
-                          e.currentTarget.nextElementSibling?.classList.remove('hidden')
-                        }}
-                      />
-                    ) : null}
-                    <Music size={20} className={`text-gray-400 ${track.cover ? 'hidden' : ''}`} />
-                  </div>
-                </div>
-
-                {/* Статус */}
-                <div className="md:col-span-1 flex justify-center">
-                  {getStatusIcon(track.status)}
-                </div>
-
-                {/* Информация о треке */}
-                <div className="md:col-span-3 min-w-0">
-                  <div className="font-semibold text-gray-900 dark:text-gray-100 truncate flex items-center gap-2">
-                    {track.title}
-                    {track.status === 'downloading' && (
-                      <span className="px-2 py-1 bg-blue-500 text-white text-xs font-bold rounded-full animate-pulse">
-                        СЕЙЧАС ЗАГРУЖАЕТСЯ
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400 truncate">
-                    {track.artist}
-                  </div>
-                  {track.album && (
-                    <div className="text-xs text-gray-500 dark:text-gray-500 truncate">
-                      {track.album}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">
+                  Статус
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[200px]">
+                  Трек
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-24">
+                  Качество
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[300px]">
+                  Прогресс
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-24">
+                  Дата
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">
+                  Действия
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {getFilteredTracks().map((track) => (
+                    <tr key={track.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${track.status === 'downloading' ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedTracks.has(track.track_id)}
+                      onChange={() => toggleTrackSelection(track.track_id)}
+                      className="w-4 h-4"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    {getStatusIcon(track.status)}
+                  </td>
+                  <td className="px-4 py-3 max-w-[200px]">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {track.title}
                     </div>
-                  )}
-                </div>
-
-                {/* Детали качества */}
-                <div className="md:col-span-2 text-right">
-                  <div className="text-sm font-medium text-primary-600 dark:text-primary-400">
+                    <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                      {track.artist}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                     {track.quality || '—'}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-500">
+                  </td>
+                  <td className="px-4 py-3 min-w-[300px]">
+                    {track.status === 'downloading' ? (
+                      <div className="space-y-2">
+                        {/* Статус-бар только для загружающегося трека */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <Download size={16} className="text-blue-500" />
+                            <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                              Загружается: {track.status}
+                            </span>
+                          </div>
+                          <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                            {(progressData.current_progress || track.progress || 0).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                          <div
+                            className="bg-blue-500 h-2 rounded-full transition-all duration-300 ease-out"
+                            style={{ width: `${Math.min(Math.max(progressData.current_progress || track.progress || 0, 0), 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                        {track.status}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
                     {formatDate(track.created_at)}
-                  </div>
-                </div>
-
-                {/* Прогресс */}
-                <div className="md:col-span-4 min-w-0">
-                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    {getStatusText(track)}
-                  </div>
-                  {track.status === 'queued' && (
-                    <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-3">
-                      <div className="bg-blue-400 h-3 rounded-full w-0"></div>
-                    </div>
-                  )}
-                  {(track.status === 'downloading' || track.status === 'processing' || track.status === 'pending') && (
-                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
-                      <div
-                        className={`h-3 rounded-full transition-all duration-500 ease-out ${track.status === 'downloading' ? 'bg-gradient-to-r from-blue-500 to-blue-600' :
-                          track.status === 'processing' ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' :
-                            'bg-gradient-to-r from-gray-400 to-gray-500'
-                          }`}
-                        style={{
-                          width: `${Math.min(Math.max(track.progress || 0, 0), 100)}%`
-                        }}
-                      ></div>
-                    </div>
-                  )}
-                  {track.status === 'completed' && (
-                    <div className="w-full bg-success-200 dark:bg-success-800 rounded-full h-3">
-                      <div className="bg-success-500 h-3 rounded-full w-full"></div>
-                    </div>
-                  )}
-                  {track.status === 'error' && (
-                    <div className="w-full bg-error-200 dark:bg-error-800 rounded-full h-3">
-                      <div className="bg-error-500 h-3 rounded-full w-full"></div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Действия */}
-                <div className="md:col-span-1 flex justify-end gap-2">
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex space-x-1">
                   {track.status === 'error' && (
                     <Button
                       variant="success"
                       size="sm"
                       onClick={() => retryTrack(track.track_id)}
                       icon={Play}
-                      className="p-2"
+                          className="p-1"
                     >
                       Повторить
                     </Button>
@@ -822,17 +716,19 @@ function DownloadQueue() {
                     size="sm"
                     onClick={() => removeTrack(track.track_id)}
                     icon={X}
-                    className="p-2"
+                        className="p-1"
                   >
                     Удалить
                   </Button>
                 </div>
-              </div>
-            </Card>
-          ))
+                  </td>
+                    </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
-    </>
+    </div>
   )
 }
 
