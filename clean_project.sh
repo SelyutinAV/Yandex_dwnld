@@ -106,3 +106,5 @@ echo "  Backend:  cd backend && python main.py"
 echo "  Frontend: cd frontend && npm run dev"
 
 
+
+

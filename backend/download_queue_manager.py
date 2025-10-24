@@ -406,6 +406,10 @@ class DownloadQueueManager:
             if result:
                 # Успешно скачан
                 self._update_track_status(track_id, 'completed', 100, str(output_path))
+                
+                # Сохраняем информацию о загруженном треке в downloaded_tracks
+                self._save_downloaded_track_info(track, str(output_path), quality)
+                
                 logger.info(f"✅ Успешно: {track['title']}")
             else:
                 # Ошибка загрузки
@@ -418,6 +422,54 @@ class DownloadQueueManager:
         
         finally:
             self.current_track_id = None
+    
+    def _save_downloaded_track_info(self, track: dict, file_path: str, quality: str):
+        """
+        Сохраняет информацию о загруженном треке в downloaded_tracks
+        
+        Args:
+            track: Информация о треке
+            file_path: Путь к загруженному файлу
+            quality: Качество загрузки
+        """
+        try:
+            import os
+            from datetime import datetime
+            from audio_quality_utils import standardize_yandex_quality, determine_audio_quality
+            
+            # Получаем размер файла
+            file_size = os.path.getsize(file_path) / (1024 * 1024)  # в МБ
+            
+            # Определяем качество файла
+            quality_info = determine_audio_quality(file_path)
+            
+            # Если не удалось определить качество из файла, используем стандартизированное
+            if quality_info['quality_level'] == 'Unknown Quality':
+                quality_info = standardize_yandex_quality(quality)
+            
+            # Сохраняем в базу данных
+            with db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO downloaded_tracks 
+                    (track_id, title, artist, album, playlist_id, file_path, file_size, format, quality, download_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    track['id'],
+                    track['title'],
+                    track['artist'],
+                    track.get('album', ''),
+                    track.get('playlist_id', ''),
+                    file_path,
+                    round(file_size, 2),
+                    quality_info['format'],
+                    quality_info['quality_string'],
+                    datetime.now().isoformat()
+                ))
+                conn.commit()
+                
+        except Exception as e:
+            logger.error(f"Ошибка сохранения информации о загруженном треке: {e}")
     
     @staticmethod
     def _sanitize_filename(name: str) -> str:

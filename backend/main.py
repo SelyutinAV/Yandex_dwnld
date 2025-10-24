@@ -1337,10 +1337,10 @@ async def get_recent_files(limit: int = 10):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/files/list")
-async def get_files_list(playlist_id: str = None, limit: int = 100, offset: int = 0):
+async def get_files_list(playlist_id: str = None, quality: str = None, limit: int = 100, offset: int = 0):
     """Получить список загруженных файлов"""
     try:
-        files = db_manager.get_downloaded_tracks(playlist_id, limit, offset)
+        files = db_manager.get_downloaded_tracks(playlist_id, quality, limit, offset)
         return {"files": files}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1399,22 +1399,19 @@ async def scan_filesystem(request: ScanRequest):
                         artist = parts[0] if len(parts) > 0 else 'Unknown Artist'
                         title = parts[1] if len(parts) > 1 else file_name
                         
-                        # Определяем формат и качество
-                        format_ext = file_path.suffix.lower()[1:].upper()
+                        # Определяем формат и качество с помощью универсальной функции
+                        from audio_quality_utils import determine_audio_quality
+                        quality_info = determine_audio_quality(str(file_path))
                         
-                        # Пытаемся получить реальные метаданные файла
-                        quality = f"{format_ext} Audio"
+                        format_ext = quality_info['format']
+                        quality = quality_info['quality_string']
                         cover_data = None
+                        
+                        # Извлекаем обложку если возможно
                         try:
                             if format_ext.lower() == 'mp3':
                                 from mutagen.mp3 import MP3
                                 audio = MP3(str(file_path))
-                                if audio.info:
-                                    bitrate = f"{audio.info.bitrate // 1000}kbps"
-                                    sample_rate = f"{audio.info.sample_rate / 1000}kHz"
-                                    quality = f"{bitrate}/{sample_rate}"
-                                
-                                # Извлекаем обложку
                                 if audio.tags:
                                     for key in audio.tags.keys():
                                         if key.startswith('APIC:'):
@@ -1423,16 +1420,10 @@ async def scan_filesystem(request: ScanRequest):
                             elif format_ext.lower() == 'flac':
                                 from mutagen.flac import FLAC
                                 audio = FLAC(str(file_path))
-                                if audio.info:
-                                    bit_depth = f"{audio.info.bits_per_sample}-bit"
-                                    sample_rate = f"{audio.info.sample_rate / 1000}kHz"
-                                    quality = f"{bit_depth}/{sample_rate}"
-                                
-                                # Извлекаем обложку из FLAC
                                 if audio.pictures:
                                     cover_data = audio.pictures[0].data
                         except Exception as e:
-                            # Если не удалось получить метаданные, используем базовое качество
+                            # Если не удалось получить обложку, продолжаем без неё
                             pass
                         
                         cursor.execute("""

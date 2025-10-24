@@ -398,7 +398,7 @@ class DatabaseManager:
             
             return tracks
     
-    def get_downloaded_tracks(self, playlist_id: str = None, limit: int = 100, offset: int = 0) -> List[Dict]:
+    def get_downloaded_tracks(self, playlist_id: str = None, quality: str = None, limit: int = 100, offset: int = 0) -> List[Dict]:
         """Получить список загруженных треков"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -416,10 +416,18 @@ class DatabaseManager:
                 FROM downloaded_tracks
             """
             params = []
+            conditions = []
             
             if playlist_id:
-                query += " WHERE playlist_id = ?"
+                conditions.append("playlist_id = ?")
                 params.append(playlist_id)
+            
+            if quality:
+                conditions.append("quality = ?")
+                params.append(quality)
+            
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
             
             query += " ORDER BY download_date DESC LIMIT ? OFFSET ?"
             params.extend([limit, offset])
