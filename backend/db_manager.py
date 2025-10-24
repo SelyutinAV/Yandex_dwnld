@@ -968,7 +968,8 @@ class DatabaseManager:
                 return []
 
             query = """
-                SELECT track_id, title, artist, album, playlist_id, file_path, file_size, format, quality, download_date
+                SELECT track_id, title, artist, album, playlist_id, file_path, file_size, format, quality, 
+                       CASE WHEN cover_data IS NOT NULL THEN 1 ELSE 0 END as has_cover, download_date
                 FROM downloaded_tracks
             """
             params = []
@@ -1003,7 +1004,8 @@ class DatabaseManager:
                         "file_size": row[6],
                         "format": row[7],
                         "quality": row[8],
-                        "download_date": row[9],
+                        "has_cover": bool(row[9]),
+                        "download_date": row[10],
                     }
                 )
 

@@ -384,10 +384,9 @@ function DownloadQueue() {
           </div>
         </div>
 
-        {/* Индикатор активного фильтра - фиксированная высота */}
-        <div className="mb-4 min-h-[60px] flex items-center">
-          {statusFilter ? (
-            <div className="w-full p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+        {/* Индикатор активного фильтра */}
+        {statusFilter && (
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
@@ -411,10 +410,7 @@ function DownloadQueue() {
               </button>
             </div>
           </div>
-          ) : (
-            <div className="w-full h-[60px]"></div>
         )}
-        </div>
 
         {/* Общая статистика */}
         <Card className="mb-6 p-6">
@@ -625,6 +621,9 @@ function DownloadQueue() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">
                   Статус
                 </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-16">
+                  Обложка
+                </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[200px]">
                   Трек
                 </th>
@@ -655,6 +654,23 @@ function DownloadQueue() {
                   </td>
                   <td className="px-4 py-3">
                     {getStatusIcon(track.status)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {track.cover ? (
+                      <img 
+                        src={track.cover} 
+                        alt={`${track.title} - ${track.artist}`}
+                        className="w-12 h-12 rounded-lg object-cover shadow-sm"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                        <span className="text-gray-400 dark:text-gray-500 text-xs">🎵</span>
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 max-w-[200px]">
                     <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">

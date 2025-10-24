@@ -2394,6 +2394,10 @@ async def scan_filesystem(request: ScanRequest):
 async def get_track_cover(track_id: str):
     """Получить обложку трека"""
     try:
+        from fastapi.responses import Response
+        import requests
+
+        # Сначала пробуем получить обложку из базы данных загруженных файлов
         with db_manager.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -2403,34 +2407,62 @@ async def get_track_cover(track_id: str):
             row = cursor.fetchone()
 
             if row and row[0]:
-                from fastapi.responses import Response
-
+                # Обложка есть в базе данных загруженных файлов
                 return Response(
                     content=row[0],
                     media_type="image/jpeg",
                     headers={"Cache-Control": "public, max-age=3600"},
                 )
-            else:
-                # Возвращаем placeholder изображение если обложка не найдена
-                from fastapi.responses import Response
 
-                # import base64  # Не используется
+            # Если обложки нет в загруженных файлах, пробуем получить из очереди загрузок
+            cursor.execute(
+                "SELECT cover FROM download_queue WHERE track_id = ?",
+                (track_id,),
+            )
+            queue_row = cursor.fetchone()
 
-                # Простое SVG изображение как placeholder
-                svg_placeholder = """<svg width="48" height="48" xmlns="http://www.w3.org/2000/svg">
-                    <rect width="48" height="48" fill="#f3f4f6"/>
-                    <text x="24" y="24" text-anchor="middle" dy=".3em" 
-                          font-family="Arial" font-size="12" fill="#6b7280">🎵</text>
-                </svg>"""
+            if queue_row and queue_row[0]:
+                # Есть URL обложки в очереди загрузок - загружаем её
+                try:
+                    cover_url = queue_row[0]
+                    response = requests.get(cover_url, timeout=10)
+                    if response.status_code == 200:
+                        cover_data = response.content
 
-                return Response(
-                    content=svg_placeholder,
-                    media_type="image/svg+xml",
-                    headers={"Cache-Control": "public, max-age=3600"},
-                )
+                        # Сохраняем обложку в базу данных загруженных файлов
+                        cursor.execute(
+                            "UPDATE downloaded_tracks SET cover_data = ? WHERE track_id = ?",
+                            (cover_data, track_id),
+                        )
+                        conn.commit()
+
+                        return Response(
+                            content=cover_data,
+                            media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=3600"},
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Не удалось загрузить обложку по URL для трека {track_id}: {e}"
+                    )
+
+        # Если обложка не найдена - возвращаем placeholder
+        svg_placeholder = """<svg width="48" height="48" xmlns="http://www.w3.org/2000/svg">
+            <rect width="48" height="48" fill="#f3f4f6"/>
+            <text x="24" y="24" text-anchor="middle" dy=".3em" 
+                  font-family="Arial" font-size="12" fill="#6b7280">🎵</text>
+        </svg>"""
+
+        return Response(
+            content=svg_placeholder,
+            media_type="image/svg+xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Ошибка получения обложки для трека {track_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

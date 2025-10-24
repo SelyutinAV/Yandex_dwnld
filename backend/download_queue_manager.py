@@ -151,7 +151,7 @@ class DownloadQueueManager:
             cursor = conn.cursor()
 
             query = """
-                SELECT id, track_id, title, artist, album, playlist, cover, status, progress, 
+                SELECT id, track_id, title, artist, album, playlist_id, cover, status, progress, 
                        quality, file_path, error_message, created_at, updated_at
                 FROM download_queue
                 ORDER BY 

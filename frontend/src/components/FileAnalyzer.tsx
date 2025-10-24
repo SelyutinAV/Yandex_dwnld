@@ -38,6 +38,7 @@ function FileAnalyzer() {
   const [allFiles, setAllFiles] = useState<AudioFile[]>([])
   const [selectedQuality, setSelectedQuality] = useState<string | null>(null)
   const [showAllFiles, setShowAllFiles] = useState(false)
+  const [showFilesWithCovers, setShowFilesWithCovers] = useState(false)
   const { state, triggerRefresh } = useAppContext()
 
   // Состояние для браузера папок
@@ -219,8 +220,31 @@ function FileAnalyzer() {
     }
   }
 
+  const loadFilesWithCovers = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('http://localhost:8000/api/files/list?limit=2000')
+      if (response.ok) {
+        const data = await response.json()
+        const filesWithCovers = (data.files || []).filter((file: AudioFile) => file.has_cover)
+        setAllFiles(filesWithCovers)
+        setShowFilesWithCovers(true)
+        setShowAllFiles(true)
+        setSelectedQuality(null)
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки файлов с обложками:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const getFilteredFiles = () => {
     if (!showAllFiles) return []
+    
+    if (showFilesWithCovers) {
+      return allFiles.filter(file => file.has_cover)
+    }
     
     if (selectedQuality) {
       return allFiles.filter(file => file.quality === selectedQuality)
@@ -565,7 +589,18 @@ function FileAnalyzer() {
 
       {recentFiles.length > 0 && !showAllFiles && (
         <Card className="p-6">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Недавно добавленные</h3>
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Недавно добавленные</h3>
+            <Button
+              variant="secondary"
+              onClick={loadFilesWithCovers}
+              disabled={loading}
+              icon={FileAudio}
+              loading={loading}
+            >
+              Показать файлы с обложками
+            </Button>
+          </div>
           <div className="space-y-4">
             {recentFiles.map((file) => (
               <div key={file.track_id} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
@@ -623,13 +658,15 @@ function FileAnalyzer() {
         <Card className="p-6">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-              {selectedQuality ? `Файлы с качеством: ${selectedQuality}` : 'Все файлы'}
+              {showFilesWithCovers ? 'Файлы с обложками' : 
+               selectedQuality ? `Файлы с качеством: ${selectedQuality}` : 'Все файлы'}
             </h3>
             <div className="flex gap-2">
               <button
                 onClick={() => {
                   setSelectedQuality(null)
                   setShowAllFiles(false)
+                  setShowFilesWithCovers(false)
                 }}
                 className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
               >
