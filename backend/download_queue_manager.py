@@ -96,7 +96,7 @@ class DownloadQueueManager:
             cursor = conn.cursor()
 
             query = """
-                SELECT id, track_id, title, artist, album, playlist, status, progress, 
+                SELECT id, track_id, title, artist, album, playlist, cover, status, progress, 
                        quality, file_path, error_message, created_at, updated_at
                 FROM download_queue
                 ORDER BY 
@@ -220,15 +220,6 @@ class DownloadQueueManager:
             logger.info("⚠️  Воркер уже запущен")
             return {"status": "already_running"}
 
-        # Проверяем есть ли треки для загрузки (queued + downloading)
-        stats = self.get_stats()
-        session_stats = stats.get("session_stats", {})
-        queued_count = session_stats.get("queued", 0)
-        downloading_count = session_stats.get("downloading", 0)
-
-        if queued_count == 0 and downloading_count == 0:
-            return {"status": "empty", "message": "Нет треков для загрузки"}
-
         # Переводим треки из pending в queued (если есть)
         # И возвращаем зависшие треки из downloading в queued
         with self.db.get_connection() as conn:
@@ -263,6 +254,15 @@ class DownloadQueueManager:
                 logger.info(
                     f"🔄 Возвращено {reset_count} зависших треков из downloading в queued"
                 )
+
+        # Проверяем есть ли треки для загрузки (queued + downloading) ПОСЛЕ обновления статусов
+        stats = self.get_stats()
+        session_stats = stats.get("session_stats", {})
+        queued_count = session_stats.get("queued", 0)
+        downloading_count = session_stats.get("downloading", 0)
+
+        if queued_count == 0 and downloading_count == 0:
+            return {"status": "empty", "message": "Нет треков для загрузки"}
 
         # Запускаем воркер
         self.is_running = True
@@ -384,7 +384,7 @@ class DownloadQueueManager:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT id, track_id, title, artist, album, playlist_id, quality
+                SELECT id, track_id, title, artist, album, playlist_id, cover, quality
                 FROM download_queue
                 WHERE status = 'queued'
                 ORDER BY created_at ASC
@@ -404,7 +404,8 @@ class DownloadQueueManager:
                 "artist": row[3],
                 "album": row[4],
                 "playlist": row[5],  # playlist_id из БД
-                "quality": row[6],
+                "cover": row[6],
+                "quality": row[7],
             }
 
     def _update_track_status(
@@ -560,6 +561,7 @@ class DownloadQueueManager:
         """
         try:
             import os
+            import requests
             from datetime import datetime
             from audio_quality_utils import (
                 standardize_yandex_quality,
@@ -576,14 +578,27 @@ class DownloadQueueManager:
             if quality_info["quality_level"] == "Unknown Quality":
                 quality_info = standardize_yandex_quality(quality)
 
+            # Получаем обложку из очереди и скачиваем её
+            cover_data = None
+            if track.get("cover"):
+                try:
+                    response = requests.get(track["cover"], timeout=10)
+                    if response.status_code == 200:
+                        cover_data = response.content
+                        logger.info(f"✅ Обложка скачана для {track['title']}")
+                except Exception as e:
+                    logger.warning(
+                        f"⚠️ Не удалось скачать обложку для {track['title']}: {e}"
+                    )
+
             # Сохраняем в базу данных
             with db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
                     INSERT OR REPLACE INTO downloaded_tracks 
-                    (track_id, title, artist, album, playlist_id, file_path, file_size, format, quality, download_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (track_id, title, artist, album, playlist_id, file_path, file_size, format, quality, cover_data, download_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         track["id"],
@@ -595,6 +610,7 @@ class DownloadQueueManager:
                         round(file_size, 2),
                         quality_info["format"],
                         quality_info["quality_string"],
+                        cover_data,
                         datetime.now().isoformat(),
                     ),
                 )

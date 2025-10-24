@@ -231,12 +231,15 @@ function PlaylistManager() {
                     src={playlist.cover}
                     alt={playlist.title}
                     className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none'
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                    }}
                   />
-                ) : (
-                  <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-                    <Music size={48} />
-                  </div>
-                )}
+                ) : null}
+                <div className={`flex items-center justify-center h-full text-gray-500 dark:text-gray-400 ${playlist.cover ? 'hidden' : ''}`}>
+                  <Music size={32} />
+                </div>
                 {playlist.isSynced && (
                   <div className="absolute top-2 right-2 bg-success-500 text-white p-1 rounded-full">
                     <CheckCircle size={16} />

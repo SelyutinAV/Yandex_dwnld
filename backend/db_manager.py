@@ -94,6 +94,7 @@ class DatabaseManager:
                     artist TEXT NOT NULL,
                     album TEXT,
                     playlist_id TEXT,
+                    cover TEXT,
                     status TEXT DEFAULT 'pending',
                     progress INTEGER DEFAULT 0,
                     quality TEXT,
@@ -109,6 +110,13 @@ class DatabaseManager:
                 cursor.execute(
                     "ALTER TABLE downloaded_tracks ADD COLUMN cover_data BLOB"
                 )
+            except sqlite3.OperationalError:
+                # Поле уже существует
+                pass
+
+            # Миграция: добавляем поле cover в download_queue если его нет
+            try:
+                cursor.execute("ALTER TABLE download_queue ADD COLUMN cover TEXT")
             except sqlite3.OperationalError:
                 # Поле уже существует
                 pass
@@ -642,7 +650,7 @@ class DatabaseManager:
 
             cursor.execute(
                 """
-                SELECT id, track_id, title, artist, album, playlist_id, status, progress, quality, error_message, created_at, updated_at
+                SELECT id, track_id, title, artist, album, playlist_id, cover, status, progress, quality, error_message, created_at, updated_at
                 FROM download_queue
                 ORDER BY created_at DESC
             """
@@ -658,12 +666,13 @@ class DatabaseManager:
                         "artist": row[3],
                         "album": row[4],
                         "playlist_id": row[5],
-                        "status": row[6],
-                        "progress": row[7],
-                        "quality": row[8],
-                        "error_message": row[9],
-                        "created_at": row[10],
-                        "updated_at": row[11],
+                        "cover": row[6],
+                        "status": row[7],
+                        "progress": row[8],
+                        "quality": row[9],
+                        "error_message": row[10],
+                        "created_at": row[11],
+                        "updated_at": row[12],
                     }
                 )
 

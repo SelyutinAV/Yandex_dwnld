@@ -100,8 +100,8 @@ class DownloadManager:
                     cursor.execute(
                         """
                         INSERT INTO download_queue 
-                        (track_id, title, artist, album, playlist_id, status, progress, quality, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
+                        (track_id, title, artist, album, playlist_id, cover, status, progress, quality, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
                     """,
                         (
                             track["id"],
@@ -109,6 +109,7 @@ class DownloadManager:
                             track["artist"],
                             track.get("album", "Unknown Album"),
                             playlist_name,
+                            track.get("cover"),
                             quality,
                             datetime.now().isoformat(),
                             datetime.now().isoformat(),

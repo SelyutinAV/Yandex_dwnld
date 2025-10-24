@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle, Download, Pause, Play, RefreshCw, RotateCcw, Trash2, X } from 'lucide-react'
+import { AlertCircle, CheckCircle, Download, Music, Pause, Play, RefreshCw, RotateCcw, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAppContext } from '../contexts/AppContext'
 import { Button } from './ui/Button'
@@ -11,6 +11,7 @@ interface Track {
   title: string
   artist: string
   album?: string
+  cover?: string
   status: 'pending' | 'queued' | 'processing' | 'downloading' | 'completed' | 'error'
   progress: number
   quality?: string
@@ -777,13 +778,31 @@ function DownloadQueue() {
                   />
                 </div>
 
+                {/* Обложка трека */}
+                <div className="md:col-span-1 flex justify-center">
+                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                    {track.cover ? (
+                      <img
+                        src={`http://localhost:8000/api/queue/track/${track.track_id}/cover`}
+                        alt={track.title}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none'
+                          e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                        }}
+                      />
+                    ) : null}
+                    <Music size={20} className={`text-gray-400 ${track.cover ? 'hidden' : ''}`} />
+                  </div>
+                </div>
+
                 {/* Статус */}
                 <div className="md:col-span-1 flex justify-center">
                   {getStatusIcon(track.status)}
                 </div>
 
                 {/* Информация о треке */}
-                <div className="md:col-span-4 min-w-0">
+                <div className="md:col-span-3 min-w-0">
                   <div className="font-semibold text-gray-900 dark:text-gray-100 truncate flex items-center gap-2">
                     {track.title}
                     {track.status === 'downloading' && (

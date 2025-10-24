@@ -88,6 +88,7 @@ class Track(BaseModel):
     artist: str
     album: str
     duration: int
+    cover: Optional[str] = None
 
 
 class DownloadRequest(BaseModel):
@@ -241,6 +242,96 @@ async def debug_queue():
             }
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.get("/api/tracks/{track_id}/cover")
+async def get_track_cover(track_id: str):
+    """Получить обложку трека из базы данных"""
+    try:
+        import sqlite3
+        import os
+        from fastapi.responses import Response
+
+        db_path = os.path.join(os.path.dirname(__file__), "yandex_music.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Ищем трек в downloaded_tracks
+        cursor.execute(
+            """
+            SELECT cover_data FROM downloaded_tracks 
+            WHERE track_id = ? AND cover_data IS NOT NULL
+            LIMIT 1
+        """,
+            (track_id,),
+        )
+
+        row = cursor.fetchone()
+        conn.close()
+
+        if row and row[0]:
+            # Возвращаем изображение
+            return Response(
+                content=row[0],
+                media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=31536000"
+                },  # Кешируем на год
+            )
+        else:
+            # Возвращаем 404 если обложка не найдена
+            raise HTTPException(status_code=404, detail="Обложка не найдена")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/queue/track/{track_id}/cover")
+async def get_queue_track_cover(track_id: str):
+    """Получить обложку трека из очереди"""
+    try:
+        import sqlite3
+        import os
+        import requests
+        from fastapi.responses import Response
+
+        db_path = os.path.join(os.path.dirname(__file__), "yandex_music.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        # Ищем трек в download_queue
+        cursor.execute(
+            """
+            SELECT cover FROM download_queue 
+            WHERE track_id = ? AND cover IS NOT NULL
+            LIMIT 1
+        """,
+            (track_id,),
+        )
+
+        row = cursor.fetchone()
+        conn.close()
+
+        if row and row[0]:
+            # Скачиваем обложку по URL
+            try:
+                response = requests.get(row[0], timeout=10)
+                if response.status_code == 200:
+                    return Response(
+                        content=response.content,
+                        media_type="image/jpeg",
+                        headers={
+                            "Cache-Control": "public, max-age=3600"
+                        },  # Кешируем на час
+                    )
+            except Exception as e:
+                print(f"Ошибка скачивания обложки: {e}")
+
+        # Возвращаем 404 если обложка не найдена
+        raise HTTPException(status_code=404, detail="Обложка не найдена")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/auth/test")
@@ -890,8 +981,8 @@ async def preview_playlist_download(request: DownloadRequest):
                     cursor.execute(
                         """
                         INSERT INTO download_queue 
-                        (track_id, title, artist, album, playlist_id, status, progress, quality, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)
+                        (track_id, title, artist, album, playlist_id, cover, status, progress, quality, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)
                     """,
                         (
                             track["id"],
@@ -899,6 +990,7 @@ async def preview_playlist_download(request: DownloadRequest):
                             track["artist"],
                             track.get("album", "Unknown Album"),
                             playlist_name,
+                            track.get("cover"),
                             request.quality,
                             datetime.now().isoformat(),
                             datetime.now().isoformat(),
@@ -2134,6 +2226,7 @@ class AddToQueueRequest(BaseModel):
     title: str
     artist: str
     album: str = None
+    cover: str = None
     quality: str = "lossless"
     playlist_id: str = None
 
@@ -2196,8 +2289,8 @@ async def add_to_queue(request: AddToQueueRequest):
             cursor.execute(
                 """
                 INSERT INTO download_queue 
-                (track_id, title, artist, album, playlist_id, status, progress, quality, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
+                (track_id, title, artist, album, playlist_id, cover, status, progress, quality, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
             """,
                 (
                     request.track_id,
@@ -2205,6 +2298,7 @@ async def add_to_queue(request: AddToQueueRequest):
                     request.artist,
                     request.album,
                     request.playlist_id,
+                    request.cover,
                     request.quality,
                     datetime.now().isoformat(),
                     datetime.now().isoformat(),
