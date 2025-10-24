@@ -27,11 +27,11 @@ export const Button: React.FC<ButtonProps> = ({
     const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
 
     const variantClasses = {
-        primary: 'bg-blue-600 hover:bg-blue-700 text-white border border-blue-600 hover:border-blue-700 shadow-sm',
-        secondary: 'bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 hover:border-gray-400 shadow-sm dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 dark:border-gray-600 dark:hover:border-gray-500',
-        success: 'bg-green-600 hover:bg-green-700 text-white border border-green-600 hover:border-green-700 shadow-sm',
-        error: 'bg-red-600 hover:bg-red-700 text-white border border-red-600 hover:border-red-700 shadow-sm',
-        warning: 'bg-yellow-600 hover:bg-yellow-700 text-white border border-yellow-600 hover:border-yellow-700 shadow-sm',
+        primary: 'bg-primary-600 hover:bg-primary-700 text-white border border-primary-600 hover:border-primary-700 shadow-sm',
+        secondary: 'bg-surface-100 hover:bg-surface-200 text-surface-800 border border-surface-300 hover:border-surface-400 shadow-sm dark:bg-surface-700 dark:hover:bg-surface-600 dark:text-surface-200 dark:border-surface-600 dark:hover:border-surface-500',
+        success: 'bg-success-600 hover:bg-success-700 text-white border border-success-600 hover:border-success-700 shadow-sm',
+        error: 'bg-error-600 hover:bg-error-700 text-white border border-error-600 hover:border-error-700 shadow-sm',
+        warning: 'bg-warning-600 hover:bg-warning-700 text-white border border-warning-600 hover:border-warning-700 shadow-sm',
         strict: 'bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 focus:ring-gray-500 shadow-sm'
     };
 

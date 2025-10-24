@@ -62,32 +62,7 @@
 }
 
 @layer components {
-
-  /* Переиспользуемые компоненты */
-  .btn-primary {
-    @apply bg-gradient-to-r from-primary-500 to-secondary-500 text-white hover:shadow-lg hover:-translate-y-0.5 focus:ring-primary-500;
-  }
-
-  .btn-secondary {
-    @apply bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 focus:ring-gray-500;
-  }
-
-  .btn-success {
-    @apply bg-success-500 text-white hover:bg-success-600 focus:ring-success-500;
-  }
-
-  .btn-error {
-    @apply bg-error-500 text-white hover:bg-error-600 focus:ring-error-500;
-  }
-
-  .card {
-    @apply bg-white dark:bg-gray-900 rounded-xl shadow-soft border border-gray-200 dark:border-gray-700;
-  }
-
-  .input-field {
-    @apply w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all duration-200;
-  }
-
+  /* Унифицированные компоненты - теперь все стили в компонентах */
   .status-indicator {
     @apply w-2.5 h-2.5 rounded-full animate-pulse-slow;
   }

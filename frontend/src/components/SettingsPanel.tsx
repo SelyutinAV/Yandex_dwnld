@@ -14,9 +14,7 @@ import {
     Save,
     ScrollText,
     Settings as SettingsIcon,
-    Trash2,
-    Wifi,
-    WifiOff
+    Trash2
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import FolderBrowser from './FolderBrowser'
@@ -24,6 +22,7 @@ import TokenHelper from './TokenHelper'
 import TokenManager from './TokenManager'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
+import { ThemeToggle } from './ui/ThemeToggle'
 
 interface SettingsPanelProps {
   onConnectionChange: (connected: boolean) => void
@@ -378,18 +377,11 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
             <SettingsIcon size={24} />
             <h2 className="text-xl font-semibold">Настройки</h2>
           </div>
-          <div className="flex items-center gap-2">
-            {isConnected ? (
-              <div className="flex items-center gap-2 px-2 py-1 bg-green-500 text-white rounded-full text-xs font-medium">
-                <Wifi size={12} />
-                <span>Подключено</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 px-2 py-1 bg-red-500 text-white rounded-full text-xs font-medium">
-                <WifiOff size={12} />
-                <span>Не подключено</span>
-              </div>
-            )}
+          <div className="flex items-center justify-start">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/80">Тема:</span>
+              <ThemeToggle />
+            </div>
           </div>
         </div>
 

@@ -7,6 +7,7 @@ export default {
     theme: {
         extend: {
             colors: {
+                // Семантические цвета
                 primary: {
                     50: '#f0f4ff',
                     100: '#e0e7ff',
@@ -67,6 +68,29 @@ export default {
                     800: '#92400e',
                     900: '#78350f',
                 },
+                
+                // Системные цвета (унифицированные)
+                surface: {
+                    50: '#f8fafc',
+                    100: '#f1f5f9',
+                    200: '#e2e8f0',
+                    300: '#cbd5e1',
+                    400: '#94a3b8',
+                    500: '#64748b',
+                    600: '#475569',
+                    700: '#334155',
+                    800: '#1e293b',
+                    900: '#0f172a',
+                },
+                
+                // Функциональные цвета
+                border: {
+                    light: '#e2e8f0',
+                    medium: '#cbd5e1',
+                    dark: '#94a3b8',
+                },
+                
+                // Совместимость с существующими gray классами
                 gray: {
                     50: '#f8fafc',
                     100: '#f1f5f9',
@@ -84,17 +108,36 @@ export default {
                 sans: ['Segoe UI', 'Tahoma', 'Geneva', 'Verdana', 'sans-serif'],
                 mono: ['Monaco', 'Menlo', 'Ubuntu Mono', 'monospace'],
             },
+            spacing: {
+                // Дополнительные размеры для унификации
+                '18': '4.5rem',
+                '88': '22rem',
+                '128': '32rem',
+            },
+            borderRadius: {
+                // Унифицированные радиусы
+                'xs': '0.125rem',
+                'sm': '0.25rem',
+                'md': '0.5rem',
+                'lg': '0.75rem',
+                'xl': '1rem',
+                '2xl': '1.5rem',
+            },
             animation: {
                 'spin-slow': 'spin 2s linear infinite',
                 'pulse-slow': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                 'bounce-subtle': 'bounce 1s infinite',
             },
             boxShadow: {
+                // Унифицированные тени
                 'soft': '0 4px 20px rgba(0, 0, 0, 0.1)',
                 'soft-lg': '0 8px 32px rgba(0, 0, 0, 0.12)',
                 'glow': '0 0 20px rgba(102, 126, 234, 0.3)',
                 'glow-success': '0 0 20px rgba(34, 197, 94, 0.3)',
                 'glow-error': '0 0 20px rgba(239, 68, 68, 0.3)',
+                'sm': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                'md': '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                'lg': '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
             },
             backdropBlur: {
                 xs: '2px',

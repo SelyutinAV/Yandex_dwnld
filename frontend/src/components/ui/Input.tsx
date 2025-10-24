@@ -40,7 +40,17 @@ export const Input: React.FC<InputProps> = ({
                 onChange={(e) => onChange(e.target.value)}
                 disabled={disabled}
                 required={required}
-                className={`input-field ${error ? 'border-error-500 focus:border-error-500 focus:ring-error-500/20' : ''}`}
+                className={`
+                    w-full px-4 py-3 
+                    bg-white dark:bg-gray-800 
+                    border border-gray-300 dark:border-gray-600 
+                    rounded-lg 
+                    text-gray-900 dark:text-gray-100 
+                    placeholder-gray-500 dark:placeholder-gray-400 
+                    focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 
+                    transition-all duration-200
+                    ${error ? 'border-error-500 focus:border-error-500 focus:ring-error-500/20' : ''}
+                `}
             />
             {error && (
                 <p className="text-sm text-error-500">{error}</p>
