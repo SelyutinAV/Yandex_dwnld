@@ -40,19 +40,19 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     };
 
     return (
-        <div className="border border-gray-200 rounded-lg p-4 mb-4 shadow-sm min-h-[80px] flex flex-col justify-center bg-white">
+        <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-4 shadow-sm min-h-[80px] flex flex-col justify-center bg-white dark:bg-gray-800">
             <div className="space-y-3">
                 {/* Общий прогресс загрузки */}
                 <div>
                     <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium text-gray-700">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                             📥 Загрузка файлов из очереди
                         </span>
-                        <span className="text-sm text-gray-600">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
                             {formatNumber(overallProgress)} из {formatNumber(overallTotal)} ({overallPercentage.toFixed(1)}%)
                         </span>
                     </div>
-                    <div className="w-full rounded-full h-3 bg-gray-200">
+                    <div className="w-full rounded-full h-3 bg-gray-200 dark:bg-gray-700">
                         <div
                             className="h-3 rounded-full bg-gradient-to-r from-blue-500 to-blue-600"
                             style={{ width: `${overallPercentage}%` }}
