@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 import os
+import sys
 
 # import asyncio  # Не используется
 # import logging  # Не используется
@@ -1633,8 +1634,8 @@ async def get_download_stats():
         # Получаем статистику из очереди загрузок
         queue_stats = db_manager.get_download_queue_stats()
 
-        # Получаем статистику загруженных файлов
-        file_stats = db_manager.get_file_statistics()
+        # Получаем и обновляем статистику загруженных файлов
+        file_stats = db_manager.update_file_statistics()
 
         return {
             "queue": queue_stats,
@@ -2110,12 +2111,117 @@ async def check_folder_exists(path: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/files/decrypt-encrypted")
+async def decrypt_encrypted_files():
+    """Расшифровать зашифрованные файлы (.encrypted)"""
+    try:
+        import os
+        import subprocess
+
+        # Получаем путь загрузки из настроек
+        settings = db_manager.get_settings()
+        download_path = settings.get("download_path", "/home/urch/Music/Yandex")
+
+        if not os.path.exists(download_path):
+            raise HTTPException(
+                status_code=404, detail="Директория загрузки не найдена"
+            )
+
+        # Запускаем утилиту расшифровки
+        script_path = os.path.join(os.path.dirname(__file__), "decrypt_files.py")
+
+        try:
+            result = subprocess.run(
+                [sys.executable, script_path, download_path],
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 минут таймаут
+            )
+
+            if result.returncode == 0:
+                return {
+                    "status": "success",
+                    "message": "Зашифрованные файлы успешно обработаны",
+                    "output": result.stdout,
+                }
+            else:
+                return {
+                    "status": "error",
+                    "message": "Ошибка при расшифровке файлов",
+                    "error": result.stderr,
+                }
+
+        except subprocess.TimeoutExpired:
+            raise HTTPException(
+                status_code=408, detail="Таймаут при расшифровке файлов"
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ошибка запуска утилиты: {e}")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/files/stats")
 async def get_files_stats():
     """Получить статистику файлов из базы данных"""
     try:
         stats = db_manager.get_file_statistics()
         return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/files/stats/refresh")
+async def refresh_files_stats():
+    """Принудительно обновить статистику файлов"""
+    try:
+        stats = db_manager.update_file_statistics()
+        return {
+            "status": "success",
+            "message": "Статистика файлов обновлена",
+            "stats": stats,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/files/stats/clear")
+async def clear_files_stats():
+    """Очистить статистику файлов (удалить кэшированную статистику)"""
+    try:
+        success = db_manager.clear_file_statistics()
+        if success:
+            return {
+                "status": "success",
+                "message": "Статистика файлов очищена",
+            }
+        else:
+            raise HTTPException(
+                status_code=500, detail="Не удалось очистить статистику файлов"
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/downloads/queue/clear")
+async def clear_download_queue():
+    """Очистить очередь загрузок"""
+    try:
+        if not download_queue_manager:
+            raise HTTPException(
+                status_code=400, detail="Менеджер очереди не инициализирован"
+            )
+
+        result = download_queue_manager.clear_queue(
+            clear_completed=True, clear_pending=True
+        )
+
+        return {
+            "status": "success",
+            "message": result["message"],
+            "cleared_count": result["cleared"],
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2645,6 +2751,12 @@ class TrackIdRequest(BaseModel):
 async def add_to_queue(request: AddToQueueRequest):
     """Добавить трек в очередь загрузок"""
     try:
+        # Автоматически очищаем предыдущие загрузки при добавлении новых треков
+        if download_queue_manager:
+            # Очищаем очередь и статистику для новой сессии
+            download_queue_manager.clear_queue(clear_completed=True, clear_pending=True)
+            db_manager.clear_file_statistics()
+
         with db_manager.get_connection() as conn:
             cursor = conn.cursor()
 
@@ -2726,12 +2838,17 @@ async def queue_add_tracks(request: AddTracksToQueueRequest):
         )
 
     try:
-        result = download_queue_manager.add_tracks(request.tracks, request.quality)
+        # Автоматически очищаем предыдущие загрузки при добавлении новых треков
+        result = download_queue_manager.add_tracks(
+            request.tracks, request.quality, clear_previous=True
+        )
         return {
             "status": "success",
             "added": result["added"],
             "skipped": result["skipped"],
             "duplicates": result["duplicates"],
+            "cleared": result["cleared"],
+            "message": f"Добавлено {result['added']} треков, очищено {result['cleared']} предыдущих",
         }
     except Exception as e:
         logger.error(f"Ошибка добавления треков в очередь: {e}")

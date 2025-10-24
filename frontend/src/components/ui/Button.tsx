@@ -28,7 +28,7 @@ export const Button: React.FC<ButtonProps> = ({
 
     const variantClasses = {
         primary: 'bg-primary-600 hover:bg-primary-700 text-white border border-primary-600 hover:border-primary-700 shadow-sm',
-        secondary: 'bg-surface-100 hover:bg-surface-200 text-surface-800 border border-surface-300 hover:border-surface-400 shadow-sm dark:bg-surface-700 dark:hover:bg-surface-600 dark:text-surface-200 dark:border-surface-600 dark:hover:border-surface-500',
+        secondary: 'bg-surface-100 hover:bg-surface-200 text-surface-800 border border-surface-300 hover:border-surface-400 shadow-sm dark:bg-gray-600 dark:hover:bg-gray-500 dark:text-gray-100 dark:border-gray-500 dark:hover:border-gray-400',
         success: 'bg-success-600 hover:bg-success-700 text-white border border-success-600 hover:border-success-700 shadow-sm',
         error: 'bg-error-600 hover:bg-error-700 text-white border border-error-600 hover:border-error-700 shadow-sm',
         warning: 'bg-warning-600 hover:bg-warning-700 text-white border border-warning-600 hover:border-warning-700 shadow-sm',

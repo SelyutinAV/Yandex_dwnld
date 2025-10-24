@@ -34,17 +34,67 @@ class DownloadQueueManager:
         self.current_track_id: Optional[str] = None
         self.worker_task: Optional[asyncio.Task] = None
 
-    def add_tracks(self, tracks: List[Dict], quality: str = "lossless") -> Dict:
+    def clear_queue(
+        self, clear_completed: bool = True, clear_pending: bool = True
+    ) -> Dict:
+        """
+        Очистить очередь загрузок
+
+        Args:
+            clear_completed: Очистить завершенные загрузки
+            clear_pending: Очистить ожидающие загрузки
+
+        Returns:
+            {cleared: int, message: str}
+        """
+        cleared_count = 0
+
+        if clear_completed:
+            cleared_count += self.db.clear_download_queue_by_status("completed")
+
+        if clear_pending:
+            cleared_count += self.db.clear_download_queue_by_status("pending")
+            cleared_count += self.db.clear_download_queue_by_status("queued")
+            cleared_count += self.db.clear_download_queue_by_status("downloading")
+            cleared_count += self.db.clear_download_queue_by_status("error")
+
+        logger.info(f"✅ Очищено из очереди: {cleared_count} треков")
+
+        return {
+            "cleared": cleared_count,
+            "message": f"Очищено {cleared_count} треков из очереди",
+        }
+
+    def add_tracks(
+        self,
+        tracks: List[Dict],
+        quality: str = "lossless",
+        clear_previous: bool = False,
+    ) -> Dict:
         """
         Добавить треки в очередь загрузки
 
         Args:
             tracks: List[{id, title, artist, album}]
             quality: lossless, hq, nq
+            clear_previous: Очистить предыдущие загрузки перед добавлением новых
 
         Returns:
-            {added: int, skipped: int, duplicates: []}
+            {added: int, skipped: int, duplicates: [], cleared: int}
         """
+        cleared_count = 0
+
+        # Очищаем предыдущие загрузки если нужно
+        if clear_previous:
+            clear_result = self.clear_queue(clear_completed=True, clear_pending=True)
+            cleared_count = clear_result["cleared"]
+
+            # Очищаем статистику файлов для новой сессии
+            try:
+                self.db.clear_file_statistics()
+                logger.info(f"🗑️  Статистика файлов очищена для новой сессии")
+            except Exception as e:
+                logger.warning(f"⚠️  Не удалось очистить статистику файлов: {e}")
         added = 0
         skipped = 0
         duplicates = []
@@ -88,7 +138,12 @@ class DownloadQueueManager:
 
         logger.info(f"✅ Добавлено в очередь: {added} треков (пропущено: {skipped})")
 
-        return {"added": added, "skipped": skipped, "duplicates": duplicates}
+        return {
+            "added": added,
+            "skipped": skipped,
+            "duplicates": duplicates,
+            "cleared": cleared_count,
+        }
 
     def get_queue(self, limit: Optional[int] = None) -> List[Dict]:
         """Получить список треков в очереди"""
@@ -530,6 +585,9 @@ class DownloadQueueManager:
                 self._update_track_status(track_id, "completed", 100, str(output_path))
 
                 # Сохраняем информацию о загруженном треке в downloaded_tracks
+                logger.info(
+                    f"🔄 Вызываем _save_downloaded_track_info для {track['title']}"
+                )
                 self._save_downloaded_track_info(track, str(output_path), quality)
 
                 # НЕ удаляем трек из очереди сразу - оставляем для отображения в плашке "Завершено"
@@ -538,6 +596,7 @@ class DownloadQueueManager:
                 logger.info(f"✅ Успешно: {track['title']}")
             else:
                 # Ошибка загрузки
+                logger.error(f"❌ result = {result}, файл не скачан: {track['title']}")
                 self._update_track_status(
                     track_id, "error", 0, error="Не удалось скачать файл"
                 )
@@ -568,11 +627,22 @@ class DownloadQueueManager:
                 determine_audio_quality,
             )
 
+            logger.info(
+                f"💾 Сохраняем информацию о треке: {track['title']} - {track['artist']}"
+            )
+
             # Получаем размер файла
-            file_size = os.path.getsize(file_path) / (1024 * 1024)  # в МБ
+            if os.path.exists(file_path):
+                file_size = os.path.getsize(file_path) / (1024 * 1024)  # в МБ
+            else:
+                logger.warning(f"⚠️  Файл не найден: {file_path}")
+                file_size = 0
 
             # Определяем качество файла
-            quality_info = determine_audio_quality(file_path)
+            if os.path.exists(file_path):
+                quality_info = determine_audio_quality(file_path)
+            else:
+                quality_info = standardize_yandex_quality(quality)
 
             # Если не удалось определить качество из файла, используем стандартизированное
             if quality_info["quality_level"] == "Unknown Quality":
@@ -601,7 +671,7 @@ class DownloadQueueManager:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
-                        track["id"],
+                        track["track_id"],
                         track["title"],
                         track["artist"],
                         track.get("album", ""),
@@ -615,6 +685,17 @@ class DownloadQueueManager:
                     ),
                 )
                 conn.commit()
+
+                logger.info(
+                    f"✅ Информация о треке сохранена в базу данных: {track['title']}"
+                )
+
+            # Обновляем статистику файлов
+            try:
+                db_manager.update_file_statistics()
+                logger.info(f"✅ Статистика файлов обновлена для {track['title']}")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось обновить статистику файлов: {e}")
 
         except Exception as e:
             logger.error(f"Ошибка сохранения информации о загруженном треке: {e}")

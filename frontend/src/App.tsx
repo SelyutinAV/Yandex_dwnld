@@ -16,6 +16,18 @@ function AppContent() {
   const { state } = useAppContext()
   const { isLoaded } = useTheme()
 
+  // Не показываем интерфейс до применения темы
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Загрузка...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-primary-500 to-secondary-500 text-white shadow-lg">

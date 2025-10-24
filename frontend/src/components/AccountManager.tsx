@@ -452,15 +452,15 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
             {isLoading ? (
                 <div className="text-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto"></div>
-                    <p className="mt-2 text-gray-600 dark:text-gray-400">Загрузка аккаунтов...</p>
+                    <p className="mt-2 text-gray-600 dark:text-gray-300">Загрузка аккаунтов...</p>
                 </div>
             ) : accounts.length === 0 ? (
                 <Card className="p-8 text-center">
-                    <Key size={48} className="mx-auto text-gray-400 mb-4" />
+                    <Key size={48} className="mx-auto text-gray-500 dark:text-gray-400 mb-4" />
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
                         Нет сохраненных аккаунтов
                     </h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-4">
+                    <p className="text-gray-600 dark:text-gray-300 mb-4">
                         Добавьте аккаунт Яндекс.Музыки для начала работы
                     </p>
                     <Button
@@ -629,7 +629,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                                 </Button>
                                             </div>
                                         </div>
-                                        <div className="font-mono text-xs text-gray-600 dark:text-gray-400 break-all bg-gray-100 dark:bg-gray-900 p-2 rounded border">
+                                        <div className="font-mono text-xs text-gray-600 dark:text-gray-300 break-all bg-gray-100 dark:bg-gray-700 p-2 rounded border">
                                             {showOAuthTokens[account.id] ? account.oauth_token_preview : '••••••••••••••••••••••••••••••••••••••••••••••••••'}
                                         </div>
                                     </div>
@@ -664,7 +664,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                                 </Button>
                                             </div>
                                         </div>
-                                        <div className="font-mono text-xs text-gray-600 dark:text-gray-400 break-all bg-gray-100 dark:bg-gray-900 p-2 rounded border">
+                                        <div className="font-mono text-xs text-gray-600 dark:text-gray-300 break-all bg-gray-100 dark:bg-gray-700 p-2 rounded border">
                                             {showSessionIdTokens[account.id] ? account.session_id_token_preview : '••••••••••••••••••••••••••••••••••••••••••••••••••'}
                                         </div>
                                     </div>
@@ -700,7 +700,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                                     className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono text-xs resize-none"
                                                     rows={3}
                                                 />
-                                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                <div className="text-xs text-gray-500 dark:text-gray-300 mt-1">
                                                     Длина: {editOAuthToken.length} символов
                                                 </div>
                                             </div>
@@ -715,7 +715,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                                     className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono text-xs resize-none"
                                                     rows={3}
                                                 />
-                                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                                <div className="text-xs text-gray-500 dark:text-gray-300 mt-1">
                                                     Длина: {editSessionIdToken.length} символов
                                                 </div>
                                             </div>

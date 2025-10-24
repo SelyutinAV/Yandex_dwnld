@@ -2,6 +2,7 @@
 Простой менеджер базы данных для работы с SQLite
 """
 
+import json
 import sqlite3
 import os
 from datetime import datetime
@@ -743,6 +744,71 @@ class DatabaseManager:
                 "byFormat": by_format,
                 "byQuality": by_quality,
             }
+
+    def update_file_statistics(self) -> Dict:
+        """Обновить и вернуть статистику файлов"""
+        # Получаем свежую статистику
+        stats = self.get_file_statistics()
+
+        # Сохраняем обновленную статистику в настройки для кэширования
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO settings (key, value, updated_at) 
+                VALUES ('file_statistics', ?, ?)
+            """,
+                (json.dumps(stats), datetime.now().isoformat()),
+            )
+
+            conn.commit()
+
+        return stats
+
+    def clear_download_queue(self) -> int:
+        """Очистить очередь загрузок (удалить все треки из очереди)"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Получаем количество записей перед удалением
+            cursor.execute("SELECT COUNT(*) FROM download_queue")
+            count = cursor.fetchone()[0]
+
+            # Удаляем все записи из очереди
+            cursor.execute("DELETE FROM download_queue")
+            conn.commit()
+
+            return count
+
+    def clear_download_queue_by_status(self, status: str) -> int:
+        """Очистить очередь загрузок по статусу"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Получаем количество записей перед удалением
+            cursor.execute(
+                "SELECT COUNT(*) FROM download_queue WHERE status = ?", (status,)
+            )
+            count = cursor.fetchone()[0]
+
+            # Удаляем записи с указанным статусом
+            cursor.execute("DELETE FROM download_queue WHERE status = ?", (status,))
+            conn.commit()
+
+            return count
+
+    def clear_file_statistics(self) -> bool:
+        """Очистить статистику файлов (удалить кэшированную статистику)"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM settings WHERE key = 'file_statistics'")
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Ошибка очистки статистики файлов: {e}")
+            return False
 
     def get_recent_downloaded_tracks(self, limit: int = 10) -> List[Dict]:
         """Получить недавно загруженные треки"""

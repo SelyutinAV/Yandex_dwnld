@@ -1,39 +1,9 @@
 import { Moon, Sun } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { useTheme } from '../../hooks/useTheme';
 
 export const ThemeToggle: React.FC = () => {
-    const [isDark, setIsDark] = useState(false);
-
-    useEffect(() => {
-        // Проверяем сохраненную тему или системную
-        const savedTheme = localStorage.getItem('theme');
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        
-        const shouldBeDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
-        setIsDark(shouldBeDark);
-        
-        // Применяем тему
-        if (shouldBeDark) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    }, []);
-
-    const toggleTheme = () => {
-        const newTheme = !isDark;
-        setIsDark(newTheme);
-        
-        // Сохраняем в localStorage
-        localStorage.setItem('theme', newTheme ? 'dark' : 'light');
-        
-        // Применяем тему
-        if (newTheme) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    };
+    const { isDark, toggleTheme } = useTheme();
 
     return (
         <button

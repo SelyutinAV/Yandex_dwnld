@@ -665,6 +665,15 @@ class YandexMusicClient:
                                     )
                                     temp_encrypted = output_path + ".encrypted"
                                     temp_decrypted = output_path + ".decrypted.mp4"
+
+                                    # Удаляем существующий зашифрованный файл, если он есть
+                                    import os
+
+                                    if os.path.exists(temp_encrypted):
+                                        os.remove(temp_encrypted)
+                                        download_logger.info(
+                                            f"🗑️  Удален старый зашифрованный файл"
+                                        )
                                 else:
                                     temp_encrypted = output_path
 
@@ -698,42 +707,73 @@ class YandexMusicClient:
 
                                     # Если нужна расшифровка и конвертация
                                     if needs_decrypt and encryption_key:
-                                        # Расшифровываем
-                                        if not self.direct_api_client.decrypt_track(
-                                            temp_encrypted,
-                                            temp_decrypted,
-                                            encryption_key,
-                                        ):
-                                            download_logger.error(
-                                                "❌ Не удалось расшифровать файл"
+                                        try:
+                                            # Расшифровываем
+                                            if not self.direct_api_client.decrypt_track(
+                                                temp_encrypted,
+                                                temp_decrypted,
+                                                encryption_key,
+                                            ):
+                                                download_logger.error(
+                                                    "❌ Не удалось расшифровать файл"
+                                                )
+                                                import os
+
+                                                if os.path.exists(temp_encrypted):
+                                                    os.remove(temp_encrypted)
+                                                return None
+
+                                            # Удаляем зашифрованный файл
+                                            import os
+
+                                            os.remove(temp_encrypted)
+
+                                            # Конвертируем MP4 в FLAC
+                                            if not self.direct_api_client.mux_to_flac(
+                                                temp_decrypted, output_path
+                                            ):
+                                                download_logger.error(
+                                                    "❌ Не удалось конвертировать в FLAC"
+                                                )
+                                                import os
+
+                                                if os.path.exists(temp_decrypted):
+                                                    os.remove(temp_decrypted)
+                                                return None
+
+                                            # Удаляем временный MP4
+                                            os.remove(temp_decrypted)
+
+                                            download_logger.info(f"✅ FLAC файл готов!")
+                                            download_logger.info(
+                                                f"   Путь: {output_path}"
                                             )
+
+                                        except Exception as e:
+                                            download_logger.error(
+                                                f"❌ Ошибка обработки зашифрованного файла: {e}"
+                                            )
+                                            import traceback
+
+                                            download_logger.error(
+                                                traceback.format_exc()
+                                            )
+
+                                            # Очищаем все временные файлы
                                             import os
 
                                             if os.path.exists(temp_encrypted):
                                                 os.remove(temp_encrypted)
-                                            return None
-
-                                        # Удаляем зашифрованный файл
-                                        import os
-
-                                        os.remove(temp_encrypted)
-
-                                        # Конвертируем MP4 в FLAC
-                                        if not self.direct_api_client.mux_to_flac(
-                                            temp_decrypted, output_path
-                                        ):
-                                            download_logger.error(
-                                                "❌ Не удалось конвертировать в FLAC"
-                                            )
                                             if os.path.exists(temp_decrypted):
                                                 os.remove(temp_decrypted)
+
+                                            # Если есть зашифрованный файл, оставляем его для ручной обработки
+                                            if os.path.exists(temp_encrypted):
+                                                download_logger.warning(
+                                                    f"⚠️  Зашифрованный файл оставлен для ручной обработки: {temp_encrypted}"
+                                                )
+
                                             return None
-
-                                        # Удаляем временный MP4
-                                        os.remove(temp_decrypted)
-
-                                        download_logger.info(f"✅ FLAC файл готов!")
-                                        download_logger.info(f"   Путь: {output_path}")
 
                                     return output_path
                                 else:
@@ -939,13 +979,20 @@ class YandexMusicClient:
                 download_logger.info(f"   Путь: {filepath}")
             else:
                 download_logger.error("❌ ОШИБКА: Файл не был создан!")
+                download_logger.error(
+                    "❌ Функция download_track возвращает None - файл не создан"
+                )
                 return None
 
+            download_logger.info(f"✅ Функция download_track возвращает: {filepath}")
             return filepath
 
         except Exception as e:
             download_logger.error(
                 f"❌ Ошибка скачивания трека {track_id}: {e}", exc_info=True
+            )
+            download_logger.info(
+                f"❌ Функция download_track возвращает None из-за ошибки"
             )
             return None
 

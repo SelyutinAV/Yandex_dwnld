@@ -28,7 +28,7 @@ export const Input: React.FC<InputProps> = ({
     return (
         <div className={`space-y-2 ${className}`}>
             {label && (
-                <label className="block text-sm font-medium text-gray-900 dark:text-gray-100">
+                <label className="block text-sm font-medium text-gray-900 dark:text-gray-50">
                     {label}
                     {required && <span className="text-error-500 ml-1">*</span>}
                 </label>
@@ -42,11 +42,11 @@ export const Input: React.FC<InputProps> = ({
                 required={required}
                 className={`
                     w-full px-4 py-3 
-                    bg-white dark:bg-gray-800 
-                    border border-gray-300 dark:border-gray-600 
+                    bg-white dark:bg-gray-700 
+                    border border-gray-300 dark:border-gray-500 
                     rounded-lg 
-                    text-gray-900 dark:text-gray-100 
-                    placeholder-gray-500 dark:placeholder-gray-400 
+                    text-gray-900 dark:text-gray-50 
+                    placeholder-gray-500 dark:placeholder-gray-200 
                     focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 
                     transition-all duration-200
                     ${error ? 'border-error-500 focus:border-error-500 focus:ring-error-500/20' : ''}
@@ -56,7 +56,7 @@ export const Input: React.FC<InputProps> = ({
                 <p className="text-sm text-error-500">{error}</p>
             )}
             {helpText && !error && (
-                <p className="text-sm text-gray-500 dark:text-gray-400">{helpText}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-300">{helpText}</p>
             )}
         </div>
     );
