@@ -21,7 +21,7 @@ function PlaylistManager() {
   const [playlistProgress, setPlaylistProgress] = useState<{ [key: string]: number }>({})
   const { state } = useAppContext()
 
-  // Функция для загрузки плейлистов с API
+  // Функция для загрузки плейлистов с API (быстрая загрузка без обложек)
   const loadPlaylists = async () => {
     setLoading(true)
     setError(null)
@@ -37,14 +37,45 @@ function PlaylistManager() {
       }
 
       const data = await response.json()
-      console.log('Загружено плейлистов:', data.length)
+      console.log('Загружено плейлистов (без обложек):', data.length)
       setPlaylists(data)
+      
+      // Догружаем обложки в фоне
+      loadPlaylistCovers(data)
     } catch (error) {
       console.error('Ошибка загрузки плейлистов:', error)
       setPlaylists([])
       setError(error instanceof Error ? error.message : 'Неизвестная ошибка')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Функция для догрузки обложек плейлистов
+  const loadPlaylistCovers = async (playlistsData: Playlist[]) => {
+    try {
+      console.log('🔄 Начинаем догрузку обложек...')
+      
+      const response = await fetch('http://localhost:8000/api/playlists/covers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(playlistsData),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+      if (result.success && result.playlists) {
+        console.log('✅ Обложки догружены для', result.playlists.length, 'плейлистов')
+        setPlaylists(result.playlists)
+      }
+    } catch (error) {
+      console.error('Ошибка догрузки обложек:', error)
+      // Не показываем ошибку пользователю, так как это не критично
     }
   }
 

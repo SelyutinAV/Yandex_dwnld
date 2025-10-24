@@ -195,16 +195,12 @@ class YandexMusicClient:
 
             for playlist in playlists:
                 try:
-                    # Получаем обложку плейлиста или обложку первого трека
-                    cover_url = self._get_cover_url(playlist)
-                    if not cover_url:
-                        cover_url = self._get_first_track_cover(playlist)
-
+                    # Быстрая загрузка без обложек
                     playlist_data = {
                         "id": str(playlist.kind),
                         "title": playlist.title or "Без названия",
                         "track_count": playlist.track_count or 0,
-                        "cover": cover_url,
+                        "cover": None,  # Обложки загрузим позже
                         "isSynced": False,
                         "lastSync": None,
                         "description": getattr(playlist, "description", None),
@@ -283,7 +279,9 @@ class YandexMusicClient:
                     f"❌ Общая ошибка получения плейлиста 'Мне нравится': {likes_error}"
                 )
 
-            print(f"✅ Успешно обработано {len(result)} плейлистов")
+            print(
+                f"✅ Успешно обработано {len(result)} плейлистов (быстрая загрузка без обложек)"
+            )
             return result
 
         except Exception as e:
@@ -1121,3 +1119,75 @@ class YandexMusicClient:
                 f"Ошибка получения обложки первого трека для плейлиста {getattr(playlist, 'title', 'Unknown')}: {e}"
             )
             return None
+
+    def load_playlist_covers_background(self, playlists: List[dict]) -> List[dict]:
+        """
+        Догрузить обложки для плейлистов в фоне
+
+        Args:
+            playlists: Список плейлистов без обложек
+
+        Returns:
+            Список плейлистов с обложками
+        """
+        print("🔄 Начинаем догрузку обложек плейлистов...")
+
+        if not self.client:
+            if not self.connect():
+                print("❌ Не удалось подключиться к Яндекс.Музыке для догрузки обложек")
+                return playlists
+
+        try:
+            # Получаем все плейлисты для поиска обложек
+            all_playlists = self.client.users_playlists_list()
+            playlist_map = {str(p.kind): p for p in all_playlists}
+
+            updated_playlists = []
+
+            for playlist_data in playlists:
+                try:
+                    playlist_id = playlist_data["id"]
+
+                    # Пропускаем плейлист "Мне нравится"
+                    if playlist_id == "likes":
+                        updated_playlists.append(playlist_data)
+                        continue
+
+                    # Ищем соответствующий плейлист
+                    if playlist_id in playlist_map:
+                        playlist_obj = playlist_map[playlist_id]
+
+                        # Получаем обложку плейлиста или обложку первого трека
+                        cover_url = self._get_cover_url(playlist_obj)
+                        if not cover_url:
+                            cover_url = self._get_first_track_cover(playlist_obj)
+
+                        # Обновляем данные плейлиста
+                        playlist_data["cover"] = cover_url
+
+                        if cover_url:
+                            print(
+                                f"✅ Обложка загружена для плейлиста: {playlist_data['title']}"
+                            )
+                        else:
+                            print(
+                                f"⚠️  Обложка не найдена для плейлиста: {playlist_data['title']}"
+                            )
+
+                    updated_playlists.append(playlist_data)
+
+                except Exception as e:
+                    print(
+                        f"❌ Ошибка догрузки обложки для плейлиста {playlist_data.get('title', 'Unknown')}: {e}"
+                    )
+                    updated_playlists.append(playlist_data)
+                    continue
+
+            print(
+                f"✅ Догрузка обложек завершена для {len(updated_playlists)} плейлистов"
+            )
+            return updated_playlists
+
+        except Exception as e:
+            print(f"❌ Ошибка догрузки обложек: {e}")
+            return playlists

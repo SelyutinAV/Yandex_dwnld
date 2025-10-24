@@ -697,13 +697,12 @@ function DownloadQueue() {
           {/* Показываем кнопку запуска только если нет активных загрузок */}
           {(downloadStats.pendingInQueue > 0 || downloadStats.queuedInQueue > 0) && downloadStats.downloadingInQueue === 0 && !progressData.is_active && (
             <Button
-              variant="primary"
+              variant="success"
               onClick={startDownloadQueue}
               size="md"
               icon={Play}
-              className="text-lg font-bold shadow-lg hover:shadow-xl transition-all animate-pulse"
             >
-              🚀 Запустить загрузку ({downloadStats.pendingInQueue + downloadStats.queuedInQueue})
+              Запустить загрузку ({downloadStats.pendingInQueue + downloadStats.queuedInQueue})
             </Button>
           )}
           {/* Показываем кнопку паузы/возобновления только если есть активные загрузки */}
@@ -714,24 +713,22 @@ function DownloadQueue() {
                 onClick={togglePause}
                 icon={isPaused ? Play : Pause}
                 size="lg"
-                className="text-lg font-bold shadow-lg hover:shadow-xl transition-all"
               >
-                {isPaused ? '▶️ Возобновить загрузку' : '⏸️ Приостановить загрузку'}
+                {isPaused ? 'Возобновить загрузку' : 'Приостановить загрузку'}
               </Button>
               <Button
-                variant="secondary"
+                variant="primary"
                 onClick={restartWorker}
                 icon={RefreshCw}
                 size="lg"
-                className="text-lg font-bold shadow-lg hover:shadow-xl transition-all"
               >
-                🔄 Перезапустить
+                Перезапустить
               </Button>
             </div>
           )}
           {downloadStats.completedInQueue > 0 && (
             <Button
-              variant="secondary"
+              variant="error"
               onClick={clearCompleted}
               size="sm"
               icon={Trash2}

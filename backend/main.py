@@ -3,7 +3,7 @@
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict
@@ -80,13 +80,14 @@ class Playlist(BaseModel):
     title: str
     track_count: int
     owner: str
+    cover: Optional[str] = None
 
 
 class Track(BaseModel):
     id: str
     title: str
     artist: str
-    album: str
+    album: Optional[str] = None
     duration: int
     cover: Optional[str] = None
 
@@ -282,8 +283,13 @@ async def get_track_cover(track_id: str):
             # Возвращаем 404 если обложка не найдена
             raise HTTPException(status_code=404, detail="Обложка не найдена")
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Ошибка получения обложки трека {track_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка получения обложки: {str(e)}"
+        )
 
 
 @app.get("/api/queue/track/{track_id}/cover")
@@ -325,13 +331,18 @@ async def get_queue_track_cover(track_id: str):
                         },  # Кешируем на час
                     )
             except Exception as e:
-                print(f"Ошибка скачивания обложки: {e}")
+                logger.warning(f"Ошибка скачивания обложки для трека {track_id}: {e}")
 
         # Возвращаем 404 если обложка не найдена
         raise HTTPException(status_code=404, detail="Обложка не найдена")
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Ошибка получения обложки для трека {track_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка получения обложки: {str(e)}"
+        )
 
 
 @app.post("/api/auth/test")
@@ -754,7 +765,7 @@ async def update_token_username_endpoint(token_id: int):
 
 @app.get("/api/playlists", response_model=List[Playlist])
 async def get_playlists():
-    """Получить список плейлистов пользователя"""
+    """Получить список плейлистов пользователя (быстрая загрузка без обложек)"""
     try:
         if not yandex_client:
             raise HTTPException(
@@ -772,8 +783,32 @@ async def get_playlists():
         except Exception as e:
             print(f"Ошибка получения username из токена: {e}")
 
+        # Быстрая загрузка без обложек
         playlists = yandex_client.get_playlists(username)
         return playlists
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/playlists/covers")
+async def load_playlist_covers(request: Request):
+    """Догрузить обложки для плейлистов в фоне"""
+    try:
+        if not yandex_client:
+            raise HTTPException(
+                status_code=400,
+                detail="Клиент не инициализирован. Проверьте токен в настройках.",
+            )
+
+        # Получаем данные плейлистов из запроса
+        playlists_data = await request.json()
+
+        # Догружаем обложки
+        updated_playlists = yandex_client.load_playlist_covers_background(
+            playlists_data
+        )
+
+        return {"success": True, "playlists": updated_playlists}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

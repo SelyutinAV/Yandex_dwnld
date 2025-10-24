@@ -426,7 +426,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
             disabled={isSaving}
             loading={isSaving}
             icon={Save}
-            className="w-full shadow-md hover:shadow-lg bg-green-500 hover:bg-green-600"
+            className="w-full"
           >
             {isSaving ? 'Сохранение...' : 'Сохранить'}
           </Button>
@@ -460,7 +460,6 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                   variant="secondary"
                   onClick={() => setIsTokenHelperOpen(true)}
                   icon={HelpCircle}
-                  className="bg-gray-100 hover:bg-gray-200 text-gray-700"
                 >
                   ? Как получить токен?
                 </Button>
@@ -487,7 +486,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                     variant="secondary"
                     onClick={handleSelectDownloadPath}
                     icon={FolderPlus}
-                    className="mt-6 bg-gray-100 hover:bg-gray-200 text-gray-700"
+                    className="mt-6"
                   >
                     Выбрать папку
                   </Button>
@@ -689,20 +688,19 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
 
                 <div className="flex gap-3">
                   <Button
+                    variant="primary"
                     onClick={loadLogs}
                     disabled={isLoadingLogs}
-                    className="flex items-center gap-2"
+                    icon={RefreshCw}
                   >
-                    <RefreshCw size={16} className={isLoadingLogs ? 'animate-spin' : ''} />
                     {isLoadingLogs ? 'Загрузка...' : 'Обновить'}
                   </Button>
 
                   <Button
+                    variant="error"
                     onClick={clearLogs}
-                    variant="secondary"
-                    className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
+                    icon={Trash2}
                   >
-                    <Trash2 size={16} />
                     Очистить все логи
                   </Button>
                 </div>
@@ -774,10 +772,10 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                         Процесс займет несколько секунд.
                       </p>
                       <Button
+                        variant="error"
                         onClick={handleSystemRestart}
-                        className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white"
+                        icon={Power}
                       >
-                        <Power size={16} />
                         Перезапустить систему
                       </Button>
                     </div>
@@ -793,10 +791,10 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                         Если приложение зависло из-за сканирования большой сетевой папки, используйте эту кнопку для принудительной остановки.
                       </p>
                       <Button
+                        variant="warning"
                         onClick={handleStopScanning}
-                        className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700 text-white"
+                        icon={RefreshCw}
                       >
-                        <RefreshCw size={16} />
                         Остановить сканирование
                       </Button>
                     </div>
@@ -821,11 +819,11 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                         Это поможет очистить базу от "мертвых" записей.
                       </p>
                       <Button
+                        variant="primary"
                         onClick={handleCheckFiles}
                         disabled={isCheckingFiles}
-                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                        icon={CheckCircle}
                       >
-                        <CheckCircle size={16} className={isCheckingFiles ? 'animate-spin' : ''} />
                         {isCheckingFiles ? 'Проверка...' : 'Проверить файлы'}
                       </Button>
                     </div>
