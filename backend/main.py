@@ -3,17 +3,20 @@
 """
 
 import os
-import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
-
-# import asyncio  # Не используется
-# import logging  # Не используется
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from config.database import (
+    get_download_manager,
+    get_download_queue_manager,
+    get_yandex_client,
+    init_app,
+    update_yandex_client,
+)
+from config.settings import get_cors_settings, get_static_dir
 from db_manager import db_manager
-from dotenv import load_dotenv
 from download_queue_manager import DownloadQueueManager
 from downloader import DownloadManager
 from fastapi import FastAPI, HTTPException, Request
@@ -22,21 +25,19 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from logger_config import get_logger, setup_logging
 from pydantic import BaseModel
+from routes import auth
 
 # Импорт наших модулей
 from yandex_client import YandexMusicClient
-
-# Загружаем переменные окружения
-load_dotenv()
 
 # Настраиваем логирование
 setup_logging()
 logger = get_logger(__name__)
 
-# Глобальные переменные
+# Глобальные переменные (для обратной совместимости)
 yandex_client: Optional[YandexMusicClient] = None
 download_manager: Optional[DownloadManager] = None
-download_queue_manager = None  # Новый менеджер очереди
+download_queue_manager: Optional[DownloadQueueManager] = None
 
 
 @asynccontextmanager
@@ -44,21 +45,14 @@ async def lifespan(app: FastAPI):
     """Управление жизненным циклом приложения"""
     # Startup
     await init_app()
+    # Обновляем глобальные переменные для обратной совместимости
+    global yandex_client, download_manager, download_queue_manager
+    yandex_client = get_yandex_client()
+    download_manager = get_download_manager()
+    download_queue_manager = get_download_queue_manager()
     yield
     # Shutdown
     print("Приложение завершает работу")
-
-
-async def init_app():
-    """Инициализация приложения"""
-    global yandex_client, download_manager
-
-    logger.info("Инициализация приложения...")
-
-    # Инициализация клиента Яндекс.Музыка
-    update_yandex_client()
-
-    logger.info("✅ Приложение инициализировано")
 
 
 # Создание FastAPI приложения
@@ -70,20 +64,36 @@ app = FastAPI(
 )
 
 # Настройка CORS
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:7777")
-cors_origins = [frontend_url, "http://127.0.0.1:7777", "null"]
-# Добавляем дополнительные origins из переменной окружения, если указаны
-additional_origins = os.getenv("CORS_ORIGINS", "")
-if additional_origins:
-    cors_origins.extend([origin.strip() for origin in additional_origins.split(",")])
+cors_settings = get_cors_settings()
+app.add_middleware(CORSMiddleware, **cors_settings)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Подключение роутов
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+
+# Обслуживание статических файлов фронтенда (только в production/Docker)
+static_dir = get_static_dir()
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Обслуживание фронтенда для всех не-API путей"""
+        # Если путь начинается с /api, пропускаем
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+
+        # Пробуем найти файл в static
+        file_path = static_dir / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+
+        # Если файл не найден, возвращаем index.html (для SPA роутинга)
+        index_path = static_dir / "index.html"
+        if index_path.exists():
+            return FileResponse(str(index_path))
+
+        raise HTTPException(status_code=404)
+
 
 # Обслуживание статических файлов фронтенда (только в production/Docker)
 static_dir = Path(__file__).parent / "static"
@@ -110,131 +120,53 @@ if static_dir.exists():
         raise HTTPException(status_code=404)
 
 
-# Модели данных
-class Playlist(BaseModel):
-    id: str
-    title: str
-    track_count: int
-    owner: str
-    cover: Optional[str] = None
+# Импорт моделей
+from models.download import (
+    AddTracksToQueueRequest,
+    ChangeStatusRequest,
+    DownloadRequest,
+    PauseRequest,
+    ProgressUpdateRequest,
+    RemoveTracksRequest,
+    TrackIdRequest,
+)
+from models.playlist import Playlist, Track
+from models.settings import (
+    CreateFolderRequest,
+    ListFoldersRequest,
+    ScanRequest,
+    Settings,
+)
+from models.token import (
+    ActivateAccountRequest,
+    ActivateTokenRequest,
+    DualTokenTest,
+    RenameAccountRequest,
+    RenameTokenRequest,
+    SaveAccountRequest,
+    SaveTokenRequest,
+    TokenTest,
+)
+
+# Импорт утилит
+from utils.cover_utils import (
+    get_file_track_cover_response,
+    get_queue_track_cover_response,
+    get_track_cover_response,
+)
 
 
-class Track(BaseModel):
-    id: str
-    title: str
-    artist: str
-    album: Optional[str] = None
-    duration: int
-    cover: Optional[str] = None
-
-
-class DownloadRequest(BaseModel):
-    playlist_id: str
-    quality: str = "lossless"
-
-
-class Settings(BaseModel):
-    token: str
-    downloadPath: str
-    quality: str
-    autoSync: bool = False
-    syncInterval: int = 24
-    fileTemplate: Optional[str] = "{artist} - {title}"
-    folderStructure: Optional[str] = "{artist}/{album}"
-
-
-class TokenTest(BaseModel):
-    token: str
-
-
-class DualTokenTest(BaseModel):
-    oauth_token: str
-    session_id_token: str
-
-
-class SaveTokenRequest(BaseModel):
-    name: str
-    token: str
-    username: Optional[str] = None
-
-
-class ActivateTokenRequest(BaseModel):
-    token_id: int
-
-
-class ProgressUpdateRequest(BaseModel):
-    progress: int
-
-
-# Функция для обновления клиента
+# Функция для обновления клиента (для обратной совместимости - использует config.database)
 def update_yandex_client(token: Optional[str] = None):
-    """Обновление клиента Яндекс.Музыка"""
-    global yandex_client, download_manager
+    """Обновление клиента Яндекс.Музыка (обёртка для обратной совместимости)"""
+    from config.database import update_yandex_client as _update_yandex_client
 
-    # Получаем токен из базы данных если не передан
-    if not token:
-        try:
-            # Сначала пробуем получить активный аккаунт из новой структуры
-            active_account = db_manager.get_active_account()
-            if active_account:
-                # Используем OAuth токен как основной, если есть
-                token = active_account.get("oauth_token") or active_account.get(
-                    "session_id_token"
-                )
-                print(
-                    f"✅ Используем токен из активного аккаунта: {active_account['name']}"
-                )
-            else:
-                # Fallback на старую структуру для совместимости
-                active_token = db_manager.get_active_token()
-                if active_token:
-                    token = active_token["token"]
-                    print(
-                        "⚠️  Используем токен из старой структуры (рекомендуется миграция)"
-                    )
-                else:
-                    # Если нет активного токена, пробуем старый способ
-                    token = db_manager.get_setting("yandex_token")
-                    if token:
-                        print("⚠️  Используем токен из настроек (устаревший способ)")
-        except Exception as e:
-            print(f"Ошибка получения токена из БД: {e}")
-            token = None
-
-    # Если токен не найден в БД, пробуем из переменных окружения
-    if not token:
-        token = os.getenv("YANDEX_TOKEN", "")
-
-    if token and token != "your_yandex_music_token_here":
-        try:
-            yandex_client = YandexMusicClient(token)
-            if yandex_client.connect():
-                # Получаем путь для загрузки из настроек
-                download_path = db_manager.get_setting(
-                    "download_path",
-                    os.getenv("DOWNLOAD_PATH", "/home/urch/Music/Yandex"),
-                )
-
-                download_manager = DownloadManager(yandex_client, download_path)
-
-                # Инициализируем новый менеджер очереди
-                global download_queue_manager
-                download_queue_manager = DownloadQueueManager(
-                    db_manager=db_manager,
-                    yandex_client=yandex_client,
-                    download_path=download_path,
-                )
-
-                print("Клиент Яндекс.Музыка успешно инициализирован")
-                print("✅ Менеджер очереди загрузок инициализирован")
-            else:
-                print("Не удалось подключиться к Яндекс.Музыке с токеном")
-                yandex_client = None
-        except Exception as e:
-            print(f"Ошибка инициализации клиента Яндекс.Музыки: {e}")
-            yandex_client = None
-    else:
-        print("Токен Яндекс.Музыки не найден")
+    _update_yandex_client(token)
+    # Обновляем глобальные переменные
+    global yandex_client, download_manager, download_queue_manager
+    yandex_client = get_yandex_client()
+    download_manager = get_download_manager()
+    download_queue_manager = get_download_queue_manager()
 
 
 # Эндпоинты
@@ -300,107 +232,13 @@ async def debug_queue():
 @app.get("/api/tracks/{track_id}/cover")
 async def get_track_cover(track_id: str):
     """Получить обложку трека из базы данных"""
-    try:
-        import os
-        import sqlite3
-
-        from fastapi.responses import Response
-
-        data_dir = os.path.join(os.path.dirname(__file__), "data")
-        os.makedirs(data_dir, exist_ok=True)
-        db_path = os.path.join(data_dir, "yandex_music.db")
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        # Ищем трек в downloaded_tracks
-        cursor.execute(
-            """
-            SELECT cover_data FROM downloaded_tracks 
-            WHERE track_id = ? AND cover_data IS NOT NULL
-            LIMIT 1
-        """,
-            (track_id,),
-        )
-
-        row = cursor.fetchone()
-        conn.close()
-
-        if row and row[0]:
-            # Возвращаем изображение
-            return Response(
-                content=row[0],
-                media_type="image/jpeg",
-                headers={
-                    "Cache-Control": "public, max-age=31536000"
-                },  # Кешируем на год
-            )
-        else:
-            # Возвращаем 404 если обложка не найдена
-            raise HTTPException(status_code=404, detail="Обложка не найдена")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка получения обложки трека {track_id}: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Ошибка получения обложки: {str(e)}"
-        )
+    return get_track_cover_response(track_id)
 
 
 @app.get("/api/queue/track/{track_id}/cover")
 async def get_queue_track_cover(track_id: str):
     """Получить обложку трека из очереди"""
-    try:
-        import os
-        import sqlite3
-
-        import requests
-        from fastapi.responses import Response
-
-        data_dir = os.path.join(os.path.dirname(__file__), "data")
-        os.makedirs(data_dir, exist_ok=True)
-        db_path = os.path.join(data_dir, "yandex_music.db")
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        # Ищем трек в download_queue
-        cursor.execute(
-            """
-            SELECT cover FROM download_queue 
-            WHERE track_id = ? AND cover IS NOT NULL
-            LIMIT 1
-        """,
-            (track_id,),
-        )
-
-        row = cursor.fetchone()
-        conn.close()
-
-        if row and row[0]:
-            # Скачиваем обложку по URL
-            try:
-                response = requests.get(row[0], timeout=10)
-                if response.status_code == 200:
-                    return Response(
-                        content=response.content,
-                        media_type="image/jpeg",
-                        headers={
-                            "Cache-Control": "public, max-age=3600"
-                        },  # Кешируем на час
-                    )
-            except Exception as e:
-                logger.warning(f"Ошибка скачивания обложки для трека {track_id}: {e}")
-
-        # Возвращаем 404 если обложка не найдена
-        raise HTTPException(status_code=404, detail="Обложка не найдена")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка получения обложки для трека {track_id}: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Ошибка получения обложки: {str(e)}"
-        )
+    return get_queue_track_cover_response(track_id)
 
 
 @app.post("/api/auth/test")
@@ -440,109 +278,8 @@ async def test_token(request: TokenTest):
         raise HTTPException(status_code=401, detail=f"Ошибка проверки токена: {str(e)}")
 
 
-def check_subscription_status(client: YandexMusicClient):
-    """Проверка статуса подписки через клиент"""
-    has_subscription = False
-    has_lossless_access = False
-    subscription_dict = None
-
-    try:
-        if client and client.client:
-            account = client.client.account_status()
-            subscription = account.subscription
-
-            print(f"Full account status: {account}")
-            print(f"Subscription object: {subscription}")
-            print(f"Subscription is None: {subscription is None}")
-
-            # Если subscription существует (не None), значит есть подписка
-            if subscription is not None:
-                has_subscription = True
-
-                # Преобразуем subscription в словарь для сериализации
-                subscription_dict = {}
-                try:
-                    if hasattr(subscription, "__dict__"):
-                        # Фильтруем несериализуемые объекты
-                        for key, value in subscription.__dict__.items():
-                            try:
-                                # Пробуем сериализовать значение
-                                import json
-
-                                json.dumps(value)
-                                subscription_dict[key] = value
-                            except Exception:
-                                # Если не сериализуется, преобразуем в строку
-                                subscription_dict[key] = str(value)
-                    elif hasattr(subscription, "items"):
-                        subscription_dict = dict(subscription)
-                    else:
-                        # Пытаемся получить атрибуты
-                        for attr in dir(subscription):
-                            if not attr.startswith("_"):
-                                try:
-                                    value = getattr(subscription, attr)
-                                    if not callable(value):
-                                        try:
-                                            import json
-
-                                            json.dumps(value)
-                                            subscription_dict[attr] = value
-                                        except Exception:
-                                            subscription_dict[attr] = str(value)
-                                except Exception:
-                                    pass
-                except Exception as e:
-                    print(f"Ошибка при преобразовании subscription: {e}")
-                    subscription_dict = {"error": str(e)}
-
-                print(f"Subscription dict: {subscription_dict}")
-
-                # Проверяем все возможные поля подписки
-                # для более точного определения
-                subscription_active = (
-                    subscription_dict.get("active", False)
-                    or subscription_dict.get("auto_renewable", False)
-                    or subscription_dict.get("non_auto_renewable", False)
-                    or getattr(subscription, "active", False)
-                    or getattr(subscription, "auto_renewable", False)
-                    or getattr(subscription, "non_auto_renewable", False)
-                )
-
-                # Если есть активная подписка, проверяем lossless
-                if subscription_active:
-                    has_lossless_access = True
-                else:
-                    # Проверяем другие признаки подписки
-                    has_subscription = (
-                        subscription_dict.get("had_any_subscription", False)
-                        or subscription_dict.get("can_start_trial", False)
-                        or subscription_dict.get("provider", False)
-                        or subscription_dict.get("family", False)
-                        or getattr(subscription, "had_any_subscription", False)
-                        or getattr(subscription, "can_start_trial", False)
-                    )
-
-                    # Если была подписка, но не активна,
-                    # lossless может быть недоступен
-                    has_lossless_access = subscription_active
-
-                print(
-                    f"Has subscription: {has_subscription}, "
-                    f"Has lossless: {has_lossless_access}, "
-                    f"Active: {subscription_active}"
-                )
-            else:
-                print("Subscription is None - нет подписки")
-
-    except Exception as e:
-        print(f"Ошибка при проверке подписки: {e}")
-        import traceback
-
-        traceback.print_exc()
-        # Если не удалось проверить, оставляем значения по умолчанию
-
-    return has_subscription, has_lossless_access, subscription_dict
+# Импорт сервисов
+from services.subscription_service import check_subscription_status
 
 
 @app.post("/api/auth/test-dual")
@@ -795,16 +532,7 @@ async def delete_token_endpoint(token_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class RenameTokenRequest(BaseModel):
-    name: str
-
-
-class CreateFolderRequest(BaseModel):
-    path: str
-
-
-class ListFoldersRequest(BaseModel):
-    path: str = "/"
+# Модели перенесены в models/
 
 
 @app.put("/api/tokens/{token_id}/rename")
@@ -868,15 +596,7 @@ async def update_token_username_endpoint(token_id: int):
 
 
 # Новые эндпоинты для работы с едиными аккаунтами Яндекс.Музыки
-class SaveAccountRequest(BaseModel):
-    name: str
-    oauth_token: Optional[str] = None
-    session_id_token: Optional[str] = None
-    username: Optional[str] = None
-
-
-class ActivateAccountRequest(BaseModel):
-    account_id: int
+# Модели перенесены в models/
 
 
 @app.get("/api/accounts/{account_id}/full-tokens")
@@ -1039,8 +759,7 @@ async def delete_account_endpoint(account_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class RenameAccountRequest(BaseModel):
-    name: str
+# Модели перенесены в models/
 
 
 @app.put("/api/accounts/{account_id}/rename")
@@ -1524,80 +1243,6 @@ async def preview_playlist_download(request: DownloadRequest):
         }
     except Exception as e:
         logger.error(f"Ошибка подготовки списка загрузки: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/download/queue/start")
-async def start_download_queue():
-    """Запустить загрузку подготовленных треков"""
-    try:
-        # Проверяем есть ли треки в очереди
-        with db_manager.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT COUNT(*) FROM download_queue WHERE status IN ('queued', 'pending')"
-            )
-            queued_count = cursor.fetchone()[0]
-
-        # Запускаем фоновую задачу для обработки очереди
-        if download_manager and queued_count > 0:
-            # Используем новый DownloadQueueManager вместо старого воркера
-            pass
-
-        return {
-            "status": "success",
-            "message": f"Запущена загрузка {queued_count} треков",
-            "count": queued_count,
-        }
-    except Exception as e:
-        logger.error(f"Ошибка запуска загрузки очереди: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/download/playlist")
-async def download_playlist(request: DownloadRequest):
-    """Загрузить плейлист (старый метод - для совместимости)"""
-    try:
-        if not download_manager:
-            raise HTTPException(
-                status_code=400, detail="Менеджер загрузок не инициализирован"
-            )
-
-        await download_manager.download_playlist(request.playlist_id, request.quality)
-        return {
-            "status": "success",
-            "message": f"Загрузка плейлиста {request.playlist_id} начата",
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/download/queue")
-async def get_download_queue():
-    """Получить очередь загрузок из БД"""
-    try:
-        with db_manager.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT id, track_id, title, artist, album, status, progress, 
-                       quality, error_message, created_at, updated_at
-                FROM download_queue
-                ORDER BY created_at DESC
-            """
-            )
-
-            columns = [description[0] for description in cursor.description]
-            rows = cursor.fetchall()
-
-            queue = []
-            for row in rows:
-                item = dict(zip(columns, row))
-                queue.append(item)
-
-            return {"queue": queue}
-    except Exception as e:
-        logger.error(f"Ошибка получения очереди: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2383,8 +2028,7 @@ async def clear_file_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class ScanRequest(BaseModel):
-    path: str
+# Модели перенесены в models/
 
 
 @app.post("/api/files/scan")
@@ -2516,77 +2160,7 @@ async def scan_filesystem(request: ScanRequest):
 @app.get("/api/files/cover/{track_id}")
 async def get_file_track_cover(track_id: str):
     """Получить обложку трека"""
-    try:
-        import requests
-        from fastapi.responses import Response
-
-        # Сначала пробуем получить обложку из базы данных загруженных файлов
-        with db_manager.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT cover_data FROM downloaded_tracks WHERE track_id = ?",
-                (track_id,),
-            )
-            row = cursor.fetchone()
-
-            if row and row[0]:
-                # Обложка есть в базе данных загруженных файлов
-                return Response(
-                    content=row[0],
-                    media_type="image/jpeg",
-                    headers={"Cache-Control": "public, max-age=3600"},
-                )
-
-            # Если обложки нет в загруженных файлах, пробуем получить из очереди загрузок
-            cursor.execute(
-                "SELECT cover FROM download_queue WHERE track_id = ?",
-                (track_id,),
-            )
-            queue_row = cursor.fetchone()
-
-            if queue_row and queue_row[0]:
-                # Есть URL обложки в очереди загрузок - загружаем её
-                try:
-                    cover_url = queue_row[0]
-                    response = requests.get(cover_url, timeout=10)
-                    if response.status_code == 200:
-                        cover_data = response.content
-
-                        # Сохраняем обложку в базу данных загруженных файлов
-                        cursor.execute(
-                            "UPDATE downloaded_tracks SET cover_data = ? WHERE track_id = ?",
-                            (cover_data, track_id),
-                        )
-                        conn.commit()
-
-                        return Response(
-                            content=cover_data,
-                            media_type="image/jpeg",
-                            headers={"Cache-Control": "public, max-age=3600"},
-                        )
-                except Exception as e:
-                    logger.warning(
-                        f"Не удалось загрузить обложку по URL для трека {track_id}: {e}"
-                    )
-
-        # Если обложка не найдена - возвращаем placeholder
-        svg_placeholder = """<svg width="48" height="48" xmlns="http://www.w3.org/2000/svg">
-            <rect width="48" height="48" fill="#f3f4f6"/>
-            <text x="24" y="24" text-anchor="middle" dy=".3em" 
-                  font-family="Arial" font-size="12" fill="#6b7280">🎵</text>
-        </svg>"""
-
-        return Response(
-            content=svg_placeholder,
-            media_type="image/svg+xml",
-            headers={"Cache-Control": "public, max-age=3600"},
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка получения обложки для трека {track_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return get_file_track_cover_response(track_id)
 
 
 @app.post("/api/downloads/{track_id}/progress")
@@ -2606,20 +2180,6 @@ async def update_download_progress(track_id: str, request: ProgressUpdateRequest
         return {"status": "success", "message": "Прогресс обновлен"}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.delete("/api/downloads/clear-completed")
-async def clear_completed_downloads():
-    """Очистить завершенные загрузки из очереди"""
-    try:
-        deleted_count = db_manager.clear_completed_downloads()
-        return {
-            "status": "success",
-            "message": f"Удалено завершенных загрузок: {deleted_count}",
-            "deleted_count": deleted_count,
-        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2780,8 +2340,7 @@ async def cancel_download(track_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class RemoveTracksRequest(BaseModel):
-    track_ids: List[str]
+# Модели перенесены в models/
 
 
 @app.post("/api/downloads/remove-selected")
@@ -2822,10 +2381,7 @@ async def clear_queued_downloads():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class ChangeStatusRequest(BaseModel):
-    from_status: str
-    to_status: str
-    count: int = 10
+# Модели перенесены в models/
 
 
 @app.post("/api/downloads/change-status")
@@ -2855,10 +2411,6 @@ async def change_track_status(request: ChangeStatusRequest):
         return {"status": "error", "message": str(e)}
 
 
-class PauseRequest(BaseModel):
-    paused: bool
-
-
 @app.post("/api/downloads/pause")
 async def pause_downloads(request: PauseRequest):
     """Приостановить/возобновить все загрузки"""
@@ -2882,101 +2434,8 @@ async def pause_downloads(request: PauseRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class AddToQueueRequest(BaseModel):
-    track_id: str
-    title: str
-    artist: str
-    album: str = None
-    cover: str = None
-    quality: str = "lossless"
-    playlist_id: str = None
-
-
 # Новые модели для обновлённой системы очереди
-class AddTracksToQueueRequest(BaseModel):
-    tracks: List[Dict]  # [{id, title, artist, album}, ...]
-    quality: str = "lossless"
-
-
-class TrackIdRequest(BaseModel):
-    track_id: str
-
-
-@app.post("/api/downloads/add-to-queue")
-async def add_to_queue(request: AddToQueueRequest):
-    """Добавить трек в очередь загрузок"""
-    try:
-        # Автоматически очищаем предыдущие загрузки при добавлении новых треков
-        if download_queue_manager:
-            # Очищаем очередь и статистику для новой сессии
-            download_queue_manager.clear_queue(clear_completed=True, clear_pending=True)
-            db_manager.clear_file_statistics()
-
-        with db_manager.get_connection() as conn:
-            cursor = conn.cursor()
-
-            # Если указан плейлист, проверяем существование в рамках этого плейлиста
-            if request.playlist_id:
-                cursor.execute(
-                    "SELECT id FROM download_queue WHERE track_id = ? AND playlist_id = ?",
-                    (request.track_id, request.playlist_id),
-                )
-                if cursor.fetchone():
-                    return {
-                        "status": "warning",
-                        "message": "Трек уже в очереди для этого плейлиста",
-                    }
-
-                cursor.execute(
-                    "SELECT id FROM downloaded_tracks WHERE track_id = ? AND playlist_id = ?",
-                    (request.track_id, request.playlist_id),
-                )
-                if cursor.fetchone():
-                    return {
-                        "status": "warning",
-                        "message": "Трек уже скачан для этого плейлиста",
-                    }
-            else:
-                # Если плейлист не указан, проверяем глобально
-                cursor.execute(
-                    "SELECT id FROM download_queue WHERE track_id = ?",
-                    (request.track_id,),
-                )
-                if cursor.fetchone():
-                    return {"status": "warning", "message": "Трек уже в очереди"}
-
-                cursor.execute(
-                    "SELECT id FROM downloaded_tracks WHERE track_id = ?",
-                    (request.track_id,),
-                )
-                if cursor.fetchone():
-                    return {"status": "warning", "message": "Трек уже скачан"}
-
-            # Добавляем трек в очередь
-            cursor.execute(
-                """
-                INSERT INTO download_queue 
-                (track_id, title, artist, album, playlist_id, cover, status, progress, quality, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
-            """,
-                (
-                    request.track_id,
-                    request.title,
-                    request.artist,
-                    request.album,
-                    request.playlist_id,
-                    request.cover,
-                    request.quality,
-                    datetime.now().isoformat(),
-                    datetime.now().isoformat(),
-                ),
-            )
-
-            conn.commit()
-
-        return {"status": "success", "message": "Трек добавлен в очередь"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# Модели перенесены в models/
 
 
 # ============================================================================
