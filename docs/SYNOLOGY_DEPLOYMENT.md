@@ -191,6 +191,8 @@ DEBUG=False
 
 ### Шаг 4: Создание необходимых папок
 
+**⚠️ ВАЖНО**: Эти папки должны быть созданы ДО запуска контейнера, иначе возникнет ошибка монтирования!
+
 ```bash
 # Создайте папки для данных
 mkdir -p /volume1/music/yandex-downloads
@@ -199,7 +201,8 @@ mkdir -p /volume1/docker/yandex-downloads/backend/data
 
 # Установите правильные права доступа
 chmod -R 755 /volume1/music/yandex-downloads
-chmod -R 755 /volume1/docker/yandex-downloads
+chmod -R 755 /volume1/docker/yandex-downloads/logs
+chmod -R 755 /volume1/docker/yandex-downloads/backend/data
 ```
 
 ### Шаг 5: Запуск через docker-compose
@@ -334,6 +337,33 @@ docker-compose down -v
 ⚠️ **Внимание**: Это удалит базу данных и все загруженные файлы!
 
 ## Troubleshooting
+
+### Ошибка монтирования volume (Bind mount failed)
+
+Если при запуске контейнера возникает ошибка:
+
+```
+Error response from daemon: Bind mount failed: '/volume1/docker/yandex-downloads/logs' does not exist
+```
+
+**Решение**: Создайте необходимые папки перед запуском контейнера:
+
+```bash
+mkdir -p /volume1/docker/yandex-downloads/logs
+mkdir -p /volume1/docker/yandex-downloads/backend/data
+mkdir -p /volume1/music/yandex-downloads
+
+# Установите права доступа
+chmod -R 755 /volume1/docker/yandex-downloads/logs
+chmod -R 755 /volume1/docker/yandex-downloads/backend/data
+chmod -R 755 /volume1/music/yandex-downloads
+```
+
+После создания папок перезапустите контейнер:
+
+```bash
+docker-compose up -d
+```
 
 ### Ошибка при клонировании репозитория (RPC failed, SSL error)
 

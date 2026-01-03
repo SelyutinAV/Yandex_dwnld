@@ -45,12 +45,19 @@ DEBUG=False
 
 ## Шаг 3: Создание папок
 
+**⚠️ ВАЖНО**: Эти папки должны быть созданы ДО запуска контейнера, иначе возникнет ошибка монтирования!
+
 Создайте необходимые папки через File Station или SSH:
 
 ```bash
 mkdir -p /volume1/music/yandex-downloads
 mkdir -p /volume1/docker/yandex-downloads/logs
 mkdir -p /volume1/docker/yandex-downloads/backend/data
+
+# Установите права доступа
+chmod -R 755 /volume1/music/yandex-downloads
+chmod -R 755 /volume1/docker/yandex-downloads/logs
+chmod -R 755 /volume1/docker/yandex-downloads/backend/data
 ```
 
 ## Шаг 4: Запуск через Container Manager
