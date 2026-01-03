@@ -45,7 +45,7 @@ interface AccountManagerProps {
 
 function AccountManager({ onAccountChange }: AccountManagerProps) {
     const [accounts, setAccounts] = useState<YandexAccount[]>([])
-    const [fullTokens, setFullTokens] = useState<{ [key: number]: { oauth?: string, session_id?: string } }>({})
+    // const [fullTokens, setFullTokens] = useState<{ [key: number]: { oauth?: string, session_id?: string } }>({}) // Не используется
     const [isLoading, setIsLoading] = useState(false)
     const [showAddForm, setShowAddForm] = useState(false)
     const [newAccountName, setNewAccountName] = useState('')
@@ -316,14 +316,14 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
         }
     }
 
-    const copyToClipboard = async (text: string) => {
-        try {
-            await navigator.clipboard.writeText(text)
-            // Можно добавить уведомление об успешном копировании
-        } catch (error) {
-            console.error('Ошибка копирования:', error)
-        }
-    }
+    // const copyToClipboard = async (text: string) => {
+    //     try {
+    //         await navigator.clipboard.writeText(text)
+    //         // Можно добавить уведомление об успешном копировании
+    //     } catch (error) {
+    //         console.error('Ошибка копирования:', error)
+    //     }
+    // }
 
     const copyTokenToClipboard = async (accountId: number, tokenType: 'oauth' | 'session_id') => {
         try {
@@ -568,9 +568,9 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
         return new Date(dateString).toLocaleString('ru-RU')
     }
 
-    const getTokenIcon = (tokenType: 'oauth' | 'session_id') => {
-        return tokenType === 'oauth' ? <Shield size={16} /> : <Monitor size={16} />
-    }
+    // const getTokenIcon = (tokenType: 'oauth' | 'session_id') => {
+    //     return tokenType === 'oauth' ? <Shield size={16} /> : <Monitor size={16} />
+    // }
 
     return (
         <div className="space-y-6">
@@ -599,7 +599,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                             <label className="block text-sm font-medium mb-2">Название аккаунта</label>
                             <Input
                                 value={newAccountName}
-                                onChange={(e) => setNewAccountName(e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewAccountName(e.target.value)}
                                 placeholder="Например: Основной аккаунт"
                             />
                         </div>
@@ -607,7 +607,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                             <label className="block text-sm font-medium mb-2">Username (опционально)</label>
                             <Input
                                 value={newUsername}
-                                onChange={(e) => setNewUsername(e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUsername(e.target.value)}
                                 placeholder="Имя пользователя"
                             />
                         </div>
@@ -615,7 +615,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                             <label className="block text-sm font-medium mb-2">OAuth токен (опционально)</label>
                             <Input
                                 value={newOAuthToken}
-                                onChange={(e) => setNewOAuthToken(e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewOAuthToken(e.target.value)}
                                 placeholder="y0_AgAAAAAAxxx..."
                             />
                         </div>
@@ -623,7 +623,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                             <label className="block text-sm font-medium mb-2">Session ID токен (опционально)</label>
                             <Input
                                 value={newSessionIdToken}
-                                onChange={(e) => setNewSessionIdToken(e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewSessionIdToken(e.target.value)}
                                 placeholder="3:1760904011.5.0.176..."
                             />
                         </div>
@@ -689,7 +689,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                             <div className="flex items-center gap-2">
                                                 <Input
                                                     value={editingAccountName}
-                                                    onChange={(e) => setEditingAccountName(e.target.value)}
+                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingAccountName(e.target.value)}
                                                     className="w-48"
                                                 />
                                                 <Button
@@ -717,8 +717,10 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                         )}
                                     </div>
                                     <StatusBadge
-                                        status={account.is_active ? 'active' : 'inactive'}
-                                    />
+                                        status={account.is_active ? 'connected' : 'disconnected'}
+                                    >
+                                        {account.is_active ? 'Активен' : 'Неактивен'}
+                                    </StatusBadge>
                                 </div>
 
                                 <div className="flex items-center gap-2">
@@ -755,7 +757,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                     </Button>
 
                                     <Button
-                                        variant="danger"
+                                        variant="error"
                                         size="sm"
                                         onClick={() => deleteAccount(account.id)}
                                         icon={Trash2}
