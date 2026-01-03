@@ -1,5 +1,12 @@
 # Docker конфигурация для Yandex Music Downloader
 
+## Развертывание на Synology NAS
+
+Для развертывания на Synology NAS с Container Manager см. подробную инструкцию:
+
+- [Быстрый старт на Synology](../SYNOLOGY_QUICK_START.md)
+- [Полная инструкция по развертыванию на Synology](./SYNOLOGY_DEPLOYMENT.md)
+
 ## Быстрый старт
 
 ### 1. Создайте файл `.env` в корне проекта
@@ -11,10 +18,11 @@ cp .env.example .env
 ```
 
 Отредактируйте `.env` и укажите:
+
 - `YANDEX_TOKEN` - ваш токен Яндекс.Музыки
 - `DOWNLOAD_PATH` - путь для сохранения музыки (локальный путь)
-- `API_PORT` - порт для API (по умолчанию 3333)
-- `FRONTEND_URL` - URL фронтенда (для CORS, по умолчанию http://localhost:7777)
+- `API_PORT` - порт для API (по умолчанию 8000)
+- `FRONTEND_URL` - URL фронтенда (для CORS, по умолчанию http://localhost:8000)
 
 ### 2. Соберите и запустите контейнер
 
@@ -24,22 +32,20 @@ docker-compose up -d --build
 
 ### 3. Откройте приложение
 
-- **Фронтенд**: http://localhost:3333 (обслуживается через бэкенд)
-- **API**: http://localhost:3333/api
+- **Фронтенд и API**: http://localhost:8000 (обслуживается через бэкенд)
+- **API**: http://localhost:8000/api
 
 ## Настройка портов
 
 Порты по умолчанию:
-- **Бэкенд**: 3333
-- **Фронтенд**: 7777
+
+- **Бэкенд и Фронтенд**: 8000
 
 Чтобы изменить порты, отредактируйте `.env`:
 
 ```env
-API_PORT=3333
-FRONTEND_URL=http://localhost:7777
-VITE_API_URL=http://localhost:3333
-VITE_FRONTEND_PORT=7777
+API_PORT=8000
+FRONTEND_URL=http://localhost:8000
 ```
 
 Затем пересоберите и перезапустите:
@@ -52,10 +58,12 @@ docker-compose up -d --build
 ## Переменные окружения
 
 ### Обязательные
+
 - `YANDEX_TOKEN` - токен Яндекс.Музыки
 
 ### Опциональные
-- `API_PORT` - порт API (по умолчанию 3333)
+
+- `API_PORT` - порт API (по умолчанию 8000)
 - `API_HOST` - хост API (по умолчанию 0.0.0.0)
 - `FRONTEND_URL` - URL фронтенда для CORS
 - `CORS_ORIGINS` - дополнительные origins через запятую
@@ -66,7 +74,8 @@ docker-compose up -d --build
 ## Volumes
 
 Контейнер монтирует следующие директории:
-- `./backend/yandex_music.db` - база данных
+
+- `./backend/data/yandex_music.db` - база данных
 - `${DOWNLOAD_PATH}` - директория для загрузки музыки
 - `./logs` - логи приложения
 
@@ -100,11 +109,13 @@ docker-compose up -d
 ## Troubleshooting
 
 ### Порт занят
+
 Измените `API_PORT` в `.env` и перезапустите контейнер.
 
 ### CORS ошибки
+
 Убедитесь, что `FRONTEND_URL` в `.env` соответствует URL, с которого открывается приложение.
 
 ### База данных не сохраняется
-Проверьте, что volume для `yandex_music.db` правильно смонтирован.
 
+Проверьте, что volume для `yandex_music.db` правильно смонтирован.

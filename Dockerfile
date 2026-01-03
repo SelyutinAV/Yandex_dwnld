@@ -33,7 +33,7 @@ RUN mkdir -p /app/downloads /app/logs
 # Переменные окружения по умолчанию
 ENV API_HOST=0.0.0.0
 ENV API_PORT=8000
-ENV FRONTEND_URL=http://localhost:7777
+ENV FRONTEND_URL=http://localhost:8000
 ENV DEBUG=False
 
 EXPOSE 8000
