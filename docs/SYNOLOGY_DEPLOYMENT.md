@@ -88,8 +88,8 @@
 
 1. **База данных**:
 
-   - Host path: `/volume1/docker/yandex-downloads/backend/data/yandex_music.db`
-   - Container path: `/app/yandex_music.db`
+   - Host path: `/volume1/docker/yandex-downloads/backend/data` (папка, не файл!)
+   - Container path: `/app/data`
 
 2. **Загрузки**:
 
@@ -448,8 +448,10 @@ git config --global --unset http.maxRequestBuffer
 Проверьте, что volume для базы данных правильно смонтирован:
 
 ```bash
-docker-compose exec yandex-music-downloader ls -la /app/yandex_music.db
+docker-compose exec yandex-music-downloader ls -la /app/data/yandex_music.db
 ```
+
+База данных должна находиться в `/app/data/yandex_music.db` внутри контейнера.
 
 ### Порт занят
 

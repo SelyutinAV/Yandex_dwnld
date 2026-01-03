@@ -23,7 +23,8 @@ services:
       - DOWNLOAD_PATH=${DOWNLOAD_PATH:-/app/downloads}  # Путь для загрузки музыки внутри контейнера
       - DEFAULT_QUALITY=${DEFAULT_QUALITY:-lossless}  # Качество по умолчанию: lossless, hq, nq
     volumes:
-      - ./backend/data/yandex_music.db:/app/yandex_music.db
+      # Монтируем папку data вместо файла, чтобы Docker мог создать файл автоматически
+      - ./backend/data:/app/data
       - ${DOWNLOAD_PATH:-./downloads}:/app/downloads
       - ./logs:/app/logs
     restart: unless-stopped
