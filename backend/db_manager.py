@@ -145,6 +145,37 @@ class DatabaseManager:
                 # Поле уже существует
                 pass
 
+            # Миграция: добавляем новые поля метаданных в downloaded_tracks
+            try:
+                cursor.execute("ALTER TABLE downloaded_tracks ADD COLUMN year INTEGER")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE downloaded_tracks ADD COLUMN genre TEXT")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE downloaded_tracks ADD COLUMN label TEXT")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE downloaded_tracks ADD COLUMN isrc TEXT")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE downloaded_tracks ADD COLUMN duration INTEGER")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE downloaded_tracks ADD COLUMN version TEXT")
+            except sqlite3.OperationalError:
+                pass
+
             # Индексы для быстрого поиска
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_yandex_accounts_active ON yandex_accounts(is_active)"
@@ -166,6 +197,17 @@ class DatabaseManager:
             )
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_download_queue_track_id ON download_queue(track_id)"
+            )
+
+            # Индексы для новых полей метаданных
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_downloaded_tracks_year ON downloaded_tracks(year)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_downloaded_tracks_genre ON downloaded_tracks(genre)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_downloaded_tracks_label ON downloaded_tracks(label)"
             )
 
             conn.commit()
@@ -831,7 +873,8 @@ class DatabaseManager:
             cursor.execute(
                 """
                 SELECT track_id, title, artist, album, file_path, file_size, format, quality, 
-                       CASE WHEN cover_data IS NOT NULL THEN 1 ELSE 0 END as has_cover, download_date
+                       CASE WHEN cover_data IS NOT NULL THEN 1 ELSE 0 END as has_cover, 
+                       download_date, year, genre, label, isrc, duration, version
                 FROM downloaded_tracks
                 ORDER BY download_date DESC
                 LIMIT ?
@@ -853,6 +896,12 @@ class DatabaseManager:
                         "quality": row[7],
                         "has_cover": bool(row[8]),
                         "download_date": row[9],
+                        "year": row[10],
+                        "genre": row[11],
+                        "label": row[12],
+                        "isrc": row[13],
+                        "duration": row[14],
+                        "version": row[15],
                     }
                 )
 
@@ -953,6 +1002,10 @@ class DatabaseManager:
         self,
         playlist_id: str = None,
         quality: str = None,
+        year: int = None,
+        genre: str = None,
+        label: str = None,
+        search: str = None,
         limit: int = 100,
         offset: int = 0,
     ) -> List[Dict]:
@@ -972,7 +1025,8 @@ class DatabaseManager:
 
             query = """
                 SELECT track_id, title, artist, album, playlist_id, file_path, file_size, format, quality, 
-                       CASE WHEN cover_data IS NOT NULL THEN 1 ELSE 0 END as has_cover, download_date
+                       CASE WHEN cover_data IS NOT NULL THEN 1 ELSE 0 END as has_cover, 
+                       download_date, year, genre, label, isrc, duration, version
                 FROM downloaded_tracks
             """
             params = []
@@ -985,6 +1039,23 @@ class DatabaseManager:
             if quality:
                 conditions.append("quality = ?")
                 params.append(quality)
+
+            if year:
+                conditions.append("year = ?")
+                params.append(year)
+
+            if genre:
+                conditions.append("genre = ?")
+                params.append(genre)
+
+            if label:
+                conditions.append("label = ?")
+                params.append(label)
+
+            if search:
+                conditions.append("(title LIKE ? OR artist LIKE ? OR album LIKE ?)")
+                search_pattern = f"%{search}%"
+                params.extend([search_pattern, search_pattern, search_pattern])
 
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
@@ -1009,6 +1080,12 @@ class DatabaseManager:
                         "quality": row[8],
                         "has_cover": bool(row[9]),
                         "download_date": row[10],
+                        "year": row[11],
+                        "genre": row[12],
+                        "label": row[13],
+                        "isrc": row[14],
+                        "duration": row[15],
+                        "version": row[16],
                     }
                 )
 

@@ -6,7 +6,7 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from config.database import (
     get_download_manager,
@@ -1952,11 +1952,27 @@ async def get_recent_files(limit: int = 10):
 
 @app.get("/api/files/list")
 async def get_files_list(
-    playlist_id: str = None, quality: str = None, limit: int = 100, offset: int = 0
+    playlist_id: str = None,
+    quality: str = None,
+    year: int = None,
+    genre: str = None,
+    label: str = None,
+    search: str = None,
+    limit: int = 100,
+    offset: int = 0,
 ):
-    """Получить список загруженных файлов"""
+    """Получить список загруженных файлов с фильтрацией"""
     try:
-        files = db_manager.get_downloaded_tracks(playlist_id, quality, limit, offset)
+        files = db_manager.get_downloaded_tracks(
+            playlist_id=playlist_id,
+            quality=quality,
+            year=year,
+            genre=genre,
+            label=label,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
         return {"files": files}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1974,6 +1990,143 @@ async def clear_file_stats():
 
         return {"status": "success", "message": "Статистика файлов очищена"}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/files/{track_id}/find-alternative")
+async def find_alternative_track(track_id: str):
+    """Найти альтернативную версию трека"""
+    try:
+        from services.original_track_finder import OriginalTrackFinder
+
+        # Получаем метаданные трека из БД
+        tracks = db_manager.get_downloaded_tracks(limit=1000)
+        track = None
+        for t in tracks:
+            if t["track_id"] == track_id:
+                track = t
+                break
+
+        if not track:
+            raise HTTPException(status_code=404, detail="Трек не найден в базе данных")
+
+        # Инициализируем поисковик
+        finder = OriginalTrackFinder()
+
+        # Ищем аналог
+        result = finder.find_alternative(
+            track_id=track_id,
+            title=track.get("title", ""),
+            artist=track.get("artist", ""),
+            album=track.get("album"),
+            year=track.get("year"),
+            isrc=track.get("isrc"),
+        )
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка поиска аналога: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class DownloadAlternativeRequest(BaseModel):
+    save_path: str
+    release_id: Optional[str] = None
+
+
+@app.post("/api/files/{track_id}/download-alternative")
+async def download_alternative_track(
+    track_id: str, request: DownloadAlternativeRequest
+):
+    """Скачать альтернативную версию трека"""
+    try:
+        # Пока что только сохраняем информацию о найденном аналоге
+        # В будущем можно добавить интеграцию с P2P или другими источниками
+
+        # Получаем информацию о треке из БД
+        tracks = db_manager.get_downloaded_tracks(limit=1000)
+        track = None
+        for t in tracks:
+            if t["track_id"] == track_id:
+                track = t
+                break
+
+        if not track:
+            raise HTTPException(status_code=404, detail="Трек не найден в базе данных")
+
+        # Сначала ищем аналог
+        from services.original_track_finder import OriginalTrackFinder
+
+        finder = OriginalTrackFinder()
+        search_result = finder.find_alternative(
+            track_id=track_id,
+            title=track.get("title", ""),
+            artist=track.get("artist", ""),
+            album=track.get("album"),
+            year=track.get("year"),
+            isrc=track.get("isrc"),
+        )
+
+        if not search_result.get("found"):
+            raise HTTPException(
+                status_code=404, detail="Аналог не найден в открытых каталогах"
+            )
+
+        # Пока что возвращаем информацию о найденном аналоге
+        # В будущем здесь можно добавить логику скачивания
+        return {
+            "status": "info",
+            "message": "Информация об аналоге получена. Прямое скачивание пока не реализовано.",
+            "alternative_info": search_result,
+            "save_path": request.save_path,
+            "note": "Для скачивания аналога используйте внешние инструменты или P2P сети",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка скачивания аналога: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class UpdateMetadataRequest(BaseModel):
+    batch_size: Optional[int] = 50
+    track_ids: Optional[List[str]] = None
+
+
+@app.post("/api/files/update-metadata")
+async def update_metadata(request: UpdateMetadataRequest):
+    """Обновить метаданные для существующих треков"""
+    try:
+        from utils.metadata_updater import MetadataUpdater
+
+        if not yandex_client:
+            raise HTTPException(
+                status_code=400, detail="Клиент Яндекс.Музыки не инициализирован"
+            )
+
+        updater = MetadataUpdater(yandex_client=yandex_client)
+        result = updater.update_existing_tracks_metadata(
+            batch_size=request.batch_size or 50, track_ids=request.track_ids
+        )
+
+        return {
+            "status": "success",
+            "message": "Обновление метаданных завершено",
+            "result": result,
+        }
+    except Exception as e:
+        logger.error(f"Ошибка обновления метаданных: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2026,26 +2179,88 @@ async def scan_filesystem(request: ScanRequest):
                         format_ext = quality_info["format"]
                         quality = quality_info["quality_string"]
                         cover_data = None
+                        year = None
+                        genre = None
+                        label = None
+                        duration = None
+                        version = None
 
-                        # Извлекаем обложку если возможно
+                        # Извлекаем метаданные из тегов файла
                         try:
                             if format_ext.lower() == "mp3":
                                 from mutagen.mp3 import MP3
 
                                 audio = MP3(str(file_path))
                                 if audio.tags:
+                                    # Обложка
                                     for key in audio.tags.keys():
                                         if key.startswith("APIC:"):
                                             cover_data = audio.tags[key].data
                                             break
+
+                                    # Год
+                                    if "TDRC" in audio.tags:
+                                        year_str = str(audio.tags["TDRC"][0])
+                                        try:
+                                            year = (
+                                                int(year_str[:4]) if year_str else None
+                                            )
+                                        except (ValueError, TypeError):
+                                            pass
+
+                                    # Жанр
+                                    if "TCON" in audio.tags:
+                                        genre = str(audio.tags["TCON"][0])
+
+                                    # Лейбл
+                                    if "TPUB" in audio.tags:
+                                        label = str(audio.tags["TPUB"][0])
+
+                                    # Версия
+                                    if "TIT3" in audio.tags:
+                                        version = str(audio.tags["TIT3"][0])
+
+                                    # Длительность
+                                    if audio.info:
+                                        duration = int(audio.info.length)
+
                             elif format_ext.lower() == "flac":
                                 from mutagen.flac import FLAC
 
                                 audio = FLAC(str(file_path))
+
+                                # Обложка
                                 if audio.pictures:
                                     cover_data = audio.pictures[0].data
-                        except Exception:
-                            # Если не удалось получить обложку, продолжаем без неё
+
+                                # Год
+                                if "date" in audio:
+                                    year_str = str(audio["date"][0])
+                                    try:
+                                        year = int(year_str[:4]) if year_str else None
+                                    except (ValueError, TypeError):
+                                        pass
+
+                                # Жанр
+                                if "genre" in audio:
+                                    genre = str(audio["genre"][0])
+
+                                # Лейбл
+                                if "label" in audio:
+                                    label = str(audio["label"][0])
+                                elif "organization" in audio:
+                                    label = str(audio["organization"][0])
+
+                                # Версия
+                                if "version" in audio:
+                                    version = str(audio["version"][0])
+
+                                # Длительность
+                                if audio.info:
+                                    duration = int(audio.info.length)
+                        except Exception as e:
+                            # Если не удалось получить метаданные, продолжаем без них
+                            print(f"Ошибка извлечения метаданных из {file_path}: {e}")
                             pass
 
                         # Извлекаем название плейлиста из пути
@@ -2070,9 +2285,9 @@ async def scan_filesystem(request: ScanRequest):
                             (
                                 track_id, title, artist, album, playlist_id,
                                 file_path, file_size, format, quality,
-                                cover_data, download_date
+                                cover_data, download_date, year, genre, label, duration, version
                             )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                             (
                                 f"scanned_{hash(str(file_path))}",  # Генерируем ID на основе пути
@@ -2086,6 +2301,11 @@ async def scan_filesystem(request: ScanRequest):
                                 quality,
                                 cover_data,  # Сохраняем данные обложки
                                 datetime.now().isoformat(),
+                                year,
+                                genre,
+                                label,
+                                duration,
+                                version,
                             ),
                         )
 

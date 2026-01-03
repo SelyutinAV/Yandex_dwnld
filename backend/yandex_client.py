@@ -440,9 +440,34 @@ class YandexMusicClient:
                                 ]
 
                             album_title = None
+                            year = None
+                            genre = None
+                            label = None
+                            version = None
+                            
                             if track.albums and len(track.albums) > 0:
                                 album = track.albums[0]
                                 album_title = getattr(album, "title", None)
+                                year = getattr(album, "year", None)
+                                genre = getattr(album, "genre", None)
+                                # Получаем первый лейбл если есть
+                                if hasattr(album, "labels") and album.labels and len(album.labels) > 0:
+                                    label = getattr(album.labels[0], "name", None)
+                                version = getattr(album, "version", None)
+                            
+                            # Получаем версию трека если не найдена в альбоме
+                            if not version:
+                                version = getattr(track, "version", None)
+                            
+                            # Попытка получить ISRC
+                            isrc = None
+                            if hasattr(track, "isrc"):
+                                isrc = track.isrc
+                            elif hasattr(track, "albums") and track.albums:
+                                for album in track.albums:
+                                    if hasattr(album, "isrc"):
+                                        isrc = album.isrc
+                                        break
 
                             track_data = {
                                 "id": str(track.id) if track.id else None,
@@ -458,6 +483,11 @@ class YandexMusicClient:
                                     if track.duration_ms
                                     else 0
                                 ),
+                                "year": year,
+                                "genre": genre,
+                                "label": label,
+                                "version": version,
+                                "isrc": isrc,
                                 "available": getattr(track, "available", True),
                                 "playlist_name": "Мне нравится",
                             }
@@ -539,9 +569,35 @@ class YandexMusicClient:
                         ]
 
                     album_title = None
+                    year = None
+                    genre = None
+                    label = None
+                    version = None
+                    
                     if track.albums and len(track.albums) > 0:
                         album = track.albums[0]
                         album_title = getattr(album, "title", None)
+                        year = getattr(album, "year", None)
+                        genre = getattr(album, "genre", None)
+                        # Получаем первый лейбл если есть
+                        if hasattr(album, "labels") and album.labels and len(album.labels) > 0:
+                            label = getattr(album.labels[0], "name", None)
+                        version = getattr(album, "version", None)
+                    
+                    # Получаем версию трека если не найдена в альбоме
+                    if not version:
+                        version = getattr(track, "version", None)
+                    
+                    # Попытка получить ISRC (может быть в разных местах)
+                    isrc = None
+                    if hasattr(track, "isrc"):
+                        isrc = track.isrc
+                    elif hasattr(track, "albums") and track.albums:
+                        # Иногда ISRC может быть в альбоме
+                        for album in track.albums:
+                            if hasattr(album, "isrc"):
+                                isrc = album.isrc
+                                break
 
                     # Получаем обложку трека
                     cover_url = self._get_track_cover_url(track)
@@ -556,6 +612,11 @@ class YandexMusicClient:
                         "duration": (
                             track.duration_ms // 1000 if track.duration_ms else 0
                         ),
+                        "year": year,
+                        "genre": genre,
+                        "label": label,
+                        "version": version,
+                        "isrc": isrc,
                         "cover": cover_url,
                         "available": getattr(track, "available", True),
                         "playlist_name": playlist_name or "Unknown Playlist",

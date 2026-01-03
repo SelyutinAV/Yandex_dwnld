@@ -667,8 +667,9 @@ class DownloadQueueManager:
                 cursor.execute(
                     """
                     INSERT OR REPLACE INTO downloaded_tracks 
-                    (track_id, title, artist, album, playlist_id, file_path, file_size, format, quality, cover_data, download_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (track_id, title, artist, album, playlist_id, file_path, file_size, format, quality, cover_data, download_date,
+                     year, genre, label, isrc, duration, version)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         track["track_id"],
@@ -682,6 +683,12 @@ class DownloadQueueManager:
                         quality_info["quality_string"],
                         cover_data,
                         datetime.now().isoformat(),
+                        track.get("year"),
+                        track.get("genre"),
+                        track.get("label"),
+                        track.get("isrc"),
+                        track.get("duration"),
+                        track.get("version"),
                     ),
                 )
                 conn.commit()
