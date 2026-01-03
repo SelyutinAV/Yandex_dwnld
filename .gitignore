@@ -84,7 +84,7 @@ restart_with_logs.sh
 view_logs.sh
 
 # Contexts and configurations
-frontend/src/contexts/
+# frontend/src/contexts/
 
 # Documentation guides
 docs/CHANGELOG_FLAC.md

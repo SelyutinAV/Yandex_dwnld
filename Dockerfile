@@ -8,7 +8,8 @@ COPY frontend/package*.json ./
 RUN npm ci
 
 # Копируем все остальные файлы (включая конфигурацию и исходники)
-COPY frontend ./
+# Исключаем node_modules если он есть, но копируем все остальное
+COPY frontend/. ./
 
 # Собираем фронтенд
 RUN npm run build
