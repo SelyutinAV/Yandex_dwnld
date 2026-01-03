@@ -236,8 +236,8 @@ function TokenHelper({ isOpen, onClose, onTokenReceived }: TokenHelperProps) {
         },
         body: JSON.stringify({
           name: `Аккаунт ${new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
-          oauth_token: oauthToken.trim(),
-          session_id_token: sessionIdToken.trim(),
+          oauth_token: oauthToken.trim() || null,
+          session_id_token: sessionIdToken.trim() || null,
           username: null, // Username будет получен автоматически из токена на бэкенде
         })
       })
@@ -252,8 +252,17 @@ function TokenHelper({ isOpen, onClose, onTokenReceived }: TokenHelperProps) {
         alert('Аккаунт успешно создан!')
         onClose()
       } else {
-        const error = await response.json()
-        alert(`Ошибка при создании аккаунта: ${error.detail || 'Неизвестная ошибка'}`)
+        let errorMessage = 'Неизвестная ошибка'
+        try {
+          const error = await response.json()
+          errorMessage = error.detail || error.message || JSON.stringify(error)
+          console.error('Ошибка API при создании аккаунта:', error)
+        } catch (parseError) {
+          const text = await response.text()
+          errorMessage = `HTTP ${response.status}: ${text || response.statusText}`
+          console.error('Ошибка парсинга ответа:', parseError, 'Response text:', text)
+        }
+        alert(`Ошибка при создании аккаунта: ${errorMessage}`)
       }
     } catch (error) {
       console.error('Ошибка при создании аккаунта:', error)
