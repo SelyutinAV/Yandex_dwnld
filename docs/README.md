@@ -31,7 +31,6 @@
 |----------|----------|
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | 🏗️ Архитектура приложения |
 | **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** | 🔧 Решение проблем |
-| **[DIAGNOSTIC.md](DIAGNOSTIC.md)** | 🔍 Диагностика проблем |
 | **[LOGGING_GUIDE.md](LOGGING_GUIDE.md)** | 📝 Руководство по логам |
 | **[LOGS_INTERFACE_GUIDE.md](LOGS_INTERFACE_GUIDE.md)** | 📋 Интерфейс логов |
 
@@ -41,8 +40,6 @@
 |----------|----------|
 | **[GIT_COMMIT_GUIDE.md](GIT_COMMIT_GUIDE.md)** | 📝 Руководство по коммиту изменений |
 | **[RESTART_BACKEND.md](RESTART_BACKEND.md)** | 🔄 Как перезапустить backend и смотреть логи |
-| **[NEXT_STEPS.md](NEXT_STEPS.md)** | 🚀 Следующие шаги и доработки |
-| **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** | 📊 Итоги создания проекта |
 
 ---
 

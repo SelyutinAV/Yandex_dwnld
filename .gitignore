@@ -71,6 +71,8 @@ logs/
 # Temporary documentation files
 *_DESIGN.md
 *_FEATURES.md
+*_FIX.md
+*_IMPROVEMENTS.md
 CURSOR_SETUP.md
 CURSOR_SETUP_COMPLETE.md
 OPTIMIZATION.md

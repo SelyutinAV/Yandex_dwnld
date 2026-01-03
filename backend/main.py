@@ -1876,57 +1876,6 @@ async def check_folder_exists(path: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/files/decrypt-encrypted")
-async def decrypt_encrypted_files():
-    """Расшифровать зашифрованные файлы (.encrypted)"""
-    try:
-        import os
-        import subprocess
-
-        # Получаем путь загрузки из настроек
-        settings = db_manager.get_settings()
-        download_path = settings.get("download_path", "/home/urch/Music/Yandex")
-
-        if not os.path.exists(download_path):
-            raise HTTPException(
-                status_code=404, detail="Директория загрузки не найдена"
-            )
-
-        # Запускаем утилиту расшифровки
-        script_path = os.path.join(os.path.dirname(__file__), "decrypt_files.py")
-
-        try:
-            result = subprocess.run(
-                [sys.executable, script_path, download_path],
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5 минут таймаут
-            )
-
-            if result.returncode == 0:
-                return {
-                    "status": "success",
-                    "message": "Зашифрованные файлы успешно обработаны",
-                    "output": result.stdout,
-                }
-            else:
-                return {
-                    "status": "error",
-                    "message": "Ошибка при расшифровке файлов",
-                    "error": result.stderr,
-                }
-
-        except subprocess.TimeoutExpired:
-            raise HTTPException(
-                status_code=408, detail="Таймаут при расшифровке файлов"
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Ошибка запуска утилиты: {e}")
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.get("/api/files/stats")
 async def get_files_stats():
     """Получить статистику файлов из базы данных"""

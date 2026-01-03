@@ -60,6 +60,20 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<'tokens' | 'download' | 'logs' | 'system'>('tokens')
 
+  // Получение портов
+  const getBackendPort = () => {
+    try {
+      const url = new URL(config.apiUrl)
+      return url.port || (url.protocol === 'https:' ? '443' : '80')
+    } catch {
+      return '8000'
+    }
+  }
+
+  const getFrontendPort = () => {
+    return window.location.port || import.meta.env.VITE_FRONTEND_PORT || '3000'
+  }
+
   // Загрузка настроек при монтировании компонента
   useEffect(() => {
     loadSettings()
@@ -924,12 +938,12 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                     <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Backend</h5>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Порт: 8000</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Порт: {getBackendPort()}</p>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Статус: {isConnected ? 'Подключен' : 'Отключен'}</p>
                   </div>
                   <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                     <h5 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Frontend</h5>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Порт: 3000</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Порт: {getFrontendPort()}</p>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Статус: Активен</p>
                   </div>
                 </div>

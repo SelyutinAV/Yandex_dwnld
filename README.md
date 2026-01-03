@@ -54,15 +54,12 @@
 ### 🛠️ Разработка и отладка
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - 🏗️ Архитектура приложения
 - **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - 🔧 Решение проблем
-- **[docs/DIAGNOSTIC.md](docs/DIAGNOSTIC.md)** - 🔍 Диагностика проблем
 - **[docs/LOGGING_GUIDE.md](docs/LOGGING_GUIDE.md)** - 📝 Руководство по логам
 - **[docs/LOGS_INTERFACE_GUIDE.md](docs/LOGS_INTERFACE_GUIDE.md)** - 📋 Интерфейс логов
 
 ### 🔄 Управление проектом
 - **[docs/GIT_COMMIT_GUIDE.md](docs/GIT_COMMIT_GUIDE.md)** - 📝 Руководство по коммиту изменений
 - **[docs/RESTART_BACKEND.md](docs/RESTART_BACKEND.md)** - 🔄 Как перезапустить backend и смотреть логи
-- **[docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)** - 🚀 Следующие шаги и доработки
-- **[docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md)** - 📊 Итоги создания проекта
 
 **📖 [Полный индекс документации](docs/README.md)**
 
@@ -155,8 +152,6 @@ DEFAULT_QUALITY=lossless
 | **[docs/QUICKSTART.md](docs/QUICKSTART.md)** | Быстрый старт за 5 минут |
 | **[docs/SETUP.md](docs/SETUP.md)** | Подробное руководство по установке |
 | **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Архитектура приложения |
-| **[docs/NEXT_STEPS.md](docs/NEXT_STEPS.md)** | Следующие шаги и доработки |
-| **[docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md)** | Итоги создания проекта |
 | **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** | 🔧 **Устранение проблем** |
 | **[docs/YANDEX_TOKEN_GUIDE.md](docs/YANDEX_TOKEN_GUIDE.md)** | 🔑 **Получение токена Яндекс.Музыки** |
 
