@@ -15,6 +15,7 @@ import {
   XCircle
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import config from '../config'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 
@@ -227,20 +228,36 @@ function TokenHelper({ isOpen, onClose, onTokenReceived }: TokenHelperProps) {
 
     setIsCreatingRecord(true)
     try {
-      // Здесь будет API вызов для создания записи в реестре токенов
-      // Пока что просто показываем успех
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      // Вызываем callback с токенами
-      onTokenReceived({
-        oauthToken: oauthToken.trim(),
-        sessionIdToken: sessionIdToken.trim()
+      // Создаем аккаунт через API
+      const response = await fetch(`${config.apiBaseUrl}/accounts/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: `Аккаунт ${new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+          oauth_token: oauthToken.trim(),
+          session_id_token: sessionIdToken.trim(),
+          username: null, // Username будет получен автоматически из токена на бэкенде
+        })
       })
 
-      onClose()
+      if (response.ok) {
+        // Вызываем callback с токенами для обновления состояния
+        onTokenReceived({
+          oauthToken: oauthToken.trim(),
+          sessionIdToken: sessionIdToken.trim()
+        })
+
+        alert('Аккаунт успешно создан!')
+        onClose()
+      } else {
+        const error = await response.json()
+        alert(`Ошибка при создании аккаунта: ${error.detail || 'Неизвестная ошибка'}`)
+      }
     } catch (error) {
-      console.error('Ошибка при создании записи:', error)
-      alert('Ошибка при создании записи в реестре токенов')
+      console.error('Ошибка при создании аккаунта:', error)
+      alert(`Ошибка при создании аккаунта: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
     } finally {
       setIsCreatingRecord(false)
     }
@@ -261,7 +278,7 @@ function TokenHelper({ isOpen, onClose, onTokenReceived }: TokenHelperProps) {
     setSubscriptionDetails(null)
 
     try {
-      const response = await fetch('/api/auth/test-dual', {
+      const response = await fetch(`${config.apiBaseUrl}/auth/test-dual`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

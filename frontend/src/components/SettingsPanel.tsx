@@ -59,6 +59,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const [isTokenHelperOpen, setIsTokenHelperOpen] = useState(false)
   const [isFolderBrowserOpen, setIsFolderBrowserOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<'tokens' | 'download' | 'logs' | 'system'>('tokens')
+  const [accountManagerKey, setAccountManagerKey] = useState(0) // Ключ для принудительного обновления AccountManager
 
   // Получение портов
   const getBackendPort = () => {
@@ -238,9 +239,11 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   }
 
 
-  const handleTokenReceived = () => {
+  const handleTokenReceived = (tokens?: { oauthToken: string; sessionIdToken: string }) => {
     setIsConnected(true)
     onConnectionChange(true)
+    // Аккаунт уже создан через API в TokenHelper, обновляем список аккаунтов
+    setAccountManagerKey(prev => prev + 1)
   }
 
   const handleAccountChange = (account: any) => {
@@ -471,7 +474,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
         <div className="flex-1 p-6 overflow-y-auto">
           {activeSection === 'tokens' && (
             <div className="space-y-6">
-              <AccountManager onAccountChange={handleAccountChange} />
+              <AccountManager key={accountManagerKey} onAccountChange={handleAccountChange} />
               <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                 <Button
                   variant="secondary"
