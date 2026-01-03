@@ -1,6 +1,6 @@
 import { AlertCircle, CheckCircle, Download, Pause, Play, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useAppContext } from '../contexts/AppContext'
+import { useAppContext } from '../contexts'
 import config from '../config'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
