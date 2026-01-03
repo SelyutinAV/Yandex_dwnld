@@ -54,6 +54,7 @@ cursor.json
 *.sqlite
 *.sqlite3
 yandex_music.db
+backend/data/
 
 # Downloaded music files
 Music/

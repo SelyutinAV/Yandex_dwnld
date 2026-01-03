@@ -124,70 +124,74 @@ class YandexMusicClient:
         """
         if not self.client:
             if not self.connect():
-                print("Не удалось подключиться к Яндекс.Музыке")
-                return []
+                logger.error("Не удалось подключиться к Яндекс.Музыке")
+                raise Exception("Не удалось подключиться к Яндекс.Музыке. Проверьте токен.")
 
         try:
             # Получаем все плейлисты пользователя
             if not self.client:
+                logger.error("Клиент не инициализирован")
                 raise Exception("Клиент не инициализирован")
 
             # Проверяем авторизацию
+            account = None
             try:
                 account = self.client.account_status()
                 if not account:
-                    print("❌ Не удалось получить информацию об аккаунте")
-                    return []
+                    logger.error("Не удалось получить информацию об аккаунте")
+                    raise Exception("Не удалось получить информацию об аккаунте. Проверьте токен.")
 
-                print(
-                    f"✅ Аккаунт получен: {account.account.login if account.account.login else 'Без логина'}"
+                logger.info(
+                    f"Аккаунт получен: {account.account.login if account.account.login else 'Без логина'}"
                 )
 
                 # Если нет UID, но есть логин, попробуем получить плейлисты с логином
                 if not account.account.uid and account.account.login:
-                    print(f"⚠️  UID не найден, но есть логин: {account.account.login}")
-                    print("   Пробуем получить плейлисты с логином...")
+                    logger.warning(f"UID не найден, но есть логин: {account.account.login}")
+                    logger.info("Пробуем получить плейлисты с логином...")
                 elif not account.account.uid and not account.account.login:
-                    print("⚠️  UID и логин не найдены, пробуем с переданным логином...")
+                    logger.warning("UID и логин не найдены, пробуем с переданным логином...")
                     if username:
-                        print(f"   Используем переданный логин: {username}")
+                        logger.info(f"Используем переданный логин: {username}")
                     else:
-                        print("   Логин не передан, попробуем без параметров")
+                        logger.info("Логин не передан, попробуем без параметров")
 
             except Exception as auth_error:
-                print(f"❌ Ошибка проверки авторизации: {auth_error}")
-                return []
+                logger.error(f"Ошибка проверки авторизации: {auth_error}", exc_info=True)
+                raise Exception(f"Ошибка авторизации: {str(auth_error)}")
 
             # Получаем плейлисты пользователя
+            playlists = None
             try:
                 # Сначала пробуем с UID
                 uid_to_use = account.account.uid or self.uid
                 if uid_to_use:
-                    print(f"Используем UID: {uid_to_use}")
+                    logger.info(f"Используем UID: {uid_to_use}")
                     playlists = self.client.users_playlists_list(uid_to_use)
                 else:
                     raise Exception("UID не найден")
             except Exception as playlist_error:
-                print(f"❌ Ошибка получения плейлистов с UID: {playlist_error}")
+                logger.warning(f"Ошибка получения плейлистов с UID: {playlist_error}")
                 # Попробуем с логином пользователя
                 try:
                     login_to_use = account.account.login or username
                     if login_to_use:
-                        print(f"🔄 Пробуем с логином: {login_to_use}")
+                        logger.info(f"Пробуем с логином: {login_to_use}")
                         playlists = self.client.users_playlists_list(login_to_use)
                     else:
                         raise Exception("Логин не найден")
                 except Exception as login_error:
-                    print(f"❌ Ошибка получения плейлистов с логином: {login_error}")
+                    logger.warning(f"Ошибка получения плейлистов с логином: {login_error}")
                     # Попробуем без параметров
                     try:
-                        print("🔄 Пробуем без параметров...")
+                        logger.info("Пробуем без параметров...")
                         playlists = self.client.users_playlists_list()
                     except Exception as fallback_error:
-                        print(
-                            f"❌ Ошибка получения плейлистов (fallback): {fallback_error}"
+                        logger.error(
+                            f"Ошибка получения плейлистов (fallback): {fallback_error}",
+                            exc_info=True
                         )
-                        return []
+                        raise Exception(f"Не удалось получить плейлисты: {str(fallback_error)}")
 
             result = []
 
@@ -279,17 +283,15 @@ class YandexMusicClient:
                     f"❌ Общая ошибка получения плейлиста 'Мне нравится': {likes_error}"
                 )
 
-            print(
-                f"✅ Успешно обработано {len(result)} плейлистов (быстрая загрузка без обложек)"
+            logger.info(
+                f"Успешно обработано {len(result)} плейлистов (быстрая загрузка без обложек)"
             )
             return result
 
         except Exception as e:
-            print(f"❌ Ошибка получения плейлистов: {e}")
-            import traceback
-
-            traceback.print_exc()
-            return []
+            error_msg = str(e) if str(e) else f"Неизвестная ошибка: {type(e).__name__}"
+            logger.error(f"Общая ошибка получения плейлистов: {error_msg}", exc_info=True)
+            raise Exception(f"Ошибка получения плейлистов: {error_msg}")
 
     def get_playlist_tracks(
         self, playlist_id: str, batch_size: int = 100, max_tracks: Optional[int] = None

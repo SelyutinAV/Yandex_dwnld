@@ -16,7 +16,10 @@ class DatabaseManager:
     def __init__(self, db_path: str = None):
         """Инициализация менеджера БД"""
         if not db_path:
-            db_path = os.path.join(os.path.dirname(__file__), "yandex_music.db")
+            # Создаем папку data, если её нет
+            data_dir = os.path.join(os.path.dirname(__file__), "data")
+            os.makedirs(data_dir, exist_ok=True)
+            db_path = os.path.join(data_dir, "yandex_music.db")
         self.db_path = db_path
         self._init_database()
 

@@ -1,5 +1,6 @@
 import { FolderOpen, X } from 'lucide-react'
 import React, { useCallback, useEffect, useState } from 'react'
+import config from '../config'
 import { Button } from './ui/Button'
 
 interface FolderTreeItemProps {
@@ -86,7 +87,7 @@ const FolderBrowser: React.FC<FolderBrowserProps> = ({
         setLoadingFolders(prev => new Set(prev).add(path))
 
         try {
-            const response = await fetch('http://localhost:8000/api/folders/list', {
+            const response = await fetch(`${config.apiBaseUrl}/folders/list`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

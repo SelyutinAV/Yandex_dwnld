@@ -1,6 +1,7 @@
 import { FileAudio, FolderPlus, HardDrive, Headphones, Music, RefreshCw, Volume2, VolumeX, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAppContext } from '../contexts/AppContext'
+import config from '../config'
 import FolderBrowser from './FolderBrowser'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
@@ -59,7 +60,7 @@ function FileAnalyzer() {
 
   const loadSettings = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/settings')
+      const response = await fetch(`${config.apiBaseUrl}/settings`)
       if (response.ok) {
         const settings = await response.json()
         setDownloadPath(settings.downloadPath || '/home/user/Music/Yandex')
@@ -73,21 +74,21 @@ function FileAnalyzer() {
     setLoading(true)
     try {
       // Загружаем статистику файлов
-      const statsResponse = await fetch('http://localhost:8000/api/files/stats')
+      const statsResponse = await fetch(`${config.apiBaseUrl}/files/stats`)
       if (statsResponse.ok) {
         const statsData = await statsResponse.json()
         setStats(statsData)
       }
 
       // Загружаем недавние файлы
-      const recentResponse = await fetch('http://localhost:8000/api/files/recent?limit=5')
+      const recentResponse = await fetch(`${config.apiBaseUrl}/files/recent?limit=5`)
       if (recentResponse.ok) {
         const recentData = await recentResponse.json()
         setRecentFiles(recentData.files || [])
       }
 
       // Загружаем все файлы
-      const allFilesResponse = await fetch('http://localhost:8000/api/files/list?limit=1000')
+      const allFilesResponse = await fetch(`${config.apiBaseUrl}/files/list?limit=1000`)
       if (allFilesResponse.ok) {
         const allFilesData = await allFilesResponse.json()
         setAllFiles(allFilesData.files || [])
@@ -107,7 +108,7 @@ function FileAnalyzer() {
   const handleFolderConfirm = async (selectedPath: string) => {
     try {
       // Сохраняем выбранный путь в настройках
-      const response = await fetch('http://localhost:8000/api/settings/download-path', {
+      const response = await fetch(`${config.apiBaseUrl}/settings/download-path`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -134,7 +135,7 @@ function FileAnalyzer() {
   const clearStats = async () => {
     if (window.confirm('Вы уверены, что хотите очистить статистику файлов?')) {
       try {
-        const response = await fetch('http://localhost:8000/api/files/clear-stats', {
+        const response = await fetch(`${config.apiBaseUrl}/files/clear-stats`, {
           method: 'DELETE'
         })
 
@@ -152,7 +153,7 @@ function FileAnalyzer() {
   const scanFilesystem = async () => {
     setLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/files/scan', {
+      const response = await fetch(`${config.apiBaseUrl}/files/scan`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -205,8 +206,8 @@ function FileAnalyzer() {
     setLoading(true)
     try {
       const url = quality 
-        ? `http://localhost:8000/api/files/list?quality=${encodeURIComponent(quality)}&limit=1000`
-        : 'http://localhost:8000/api/files/list?limit=1000'
+        ? `${config.apiBaseUrl}/files/list?quality=${encodeURIComponent(quality)}&limit=1000`
+        : `${config.apiBaseUrl}/files/list?limit=1000`
       
       const response = await fetch(url)
       if (response.ok) {
@@ -223,7 +224,7 @@ function FileAnalyzer() {
   const loadFilesWithCovers = async () => {
     setLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/files/list?limit=2000')
+      const response = await fetch(`${config.apiBaseUrl}/files/list?limit=2000`)
       if (response.ok) {
         const data = await response.json()
         const filesWithCovers = (data.files || []).filter((file: AudioFile) => file.has_cover)
@@ -606,7 +607,7 @@ function FileAnalyzer() {
               <div key={file.track_id} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
                   <img
-                    src={`http://localhost:8000/api/files/cover/${file.track_id}`}
+                    src={`${config.apiBaseUrl}/files/cover/${file.track_id}`}
                     alt={`${file.artist} - ${file.title}`}
                     className="w-full h-full object-cover"
                     onError={(e) => {
@@ -689,7 +690,7 @@ function FileAnalyzer() {
                 <div key={file.track_id} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
                     <img
-                      src={`http://localhost:8000/api/files/cover/${file.track_id}`}
+                      src={`${config.apiBaseUrl}/files/cover/${file.track_id}`}
                       alt={`${file.artist} - ${file.title}`}
                       className="w-full h-full object-cover"
                       onError={(e) => {

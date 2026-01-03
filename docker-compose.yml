@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  yandex-music-downloader:
+    build: .
+    container_name: yandex-music-downloader
+    ports:
+      - "${API_PORT:-3333}:8000"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:7777}
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+      - DEBUG=${DEBUG:-False}
+      - YANDEX_TOKEN=${YANDEX_TOKEN:-}
+      - DOWNLOAD_PATH=${DOWNLOAD_PATH:-/app/downloads}
+      - DEFAULT_QUALITY=${DEFAULT_QUALITY:-lossless}
+    volumes:
+      - ./backend/yandex_music.db:/app/yandex_music.db
+      - ${DOWNLOAD_PATH:-./downloads}:/app/downloads
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+

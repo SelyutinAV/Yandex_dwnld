@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react'
 import AccountManager from './AccountManager'
 import FolderBrowser from './FolderBrowser'
 import TokenHelper from './TokenHelper'
+import config from '../config'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import { ThemeToggle } from './ui/ThemeToggle'
@@ -76,7 +77,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const loadSettings = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/settings')
+      const response = await fetch(`${config.apiBaseUrl}/settings`)
       if (response.ok) {
         const settings = await response.json()
         setDownloadPath(settings.downloadPath || '/home/urch/Music/Yandex')
@@ -103,7 +104,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   // Функция для загрузки количества файлов
   const loadFilesCount = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/stats')
+      const response = await fetch(`${config.apiBaseUrl}/stats`)
       if (response.ok) {
         const data = await response.json()
         setTotalFilesCount(data.totalTracks || 0)
@@ -117,7 +118,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const loadLogs = async () => {
     setIsLoadingLogs(true)
     try {
-      const response = await fetch(`http://localhost:8000/api/logs?log_type=${logType}&lines=${logLines}`)
+      const response = await fetch(`${config.apiBaseUrl}/logs?log_type=${logType}&lines=${logLines}`)
       if (response.ok) {
         const data = await response.json()
         setLogs(data.logs || [])
@@ -131,7 +132,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
 
   const loadLogStats = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/logs/stats')
+      const response = await fetch(`${config.apiBaseUrl}/logs/stats`)
       if (response.ok) {
         const stats = await response.json()
         setLogStats(stats)
@@ -147,7 +148,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/logs', {
+      const response = await fetch(`${config.apiBaseUrl}/logs`, {
         method: 'DELETE'
       })
       if (response.ok) {
@@ -189,10 +190,10 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
     setIsSaving(true)
     try {
       // Сначала получаем текущие настройки, чтобы получить токен
-      const settingsResponse = await fetch('http://localhost:8000/api/settings')
+      const settingsResponse = await fetch(`${config.apiBaseUrl}/settings`)
       const currentSettings = await settingsResponse.json()
 
-      const response = await fetch('http://localhost:8000/api/settings', {
+      const response = await fetch(`${config.apiBaseUrl}/settings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -255,7 +256,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
   const handleFolderConfirm = async (selectedPath: string) => {
     try {
       // Сохраняем выбранный путь в настройках
-      const response = await fetch('http://localhost:8000/api/settings/download-path', {
+      const response = await fetch(`${config.apiBaseUrl}/settings/download-path`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -284,7 +285,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/system/restart', {
+      const response = await fetch(`${config.apiBaseUrl}/system/restart`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -313,7 +314,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/folders/scan-stop', {
+      const response = await fetch(`${config.apiBaseUrl}/folders/scan-stop`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -342,7 +343,7 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
     setFileCheckResult(null)
 
     try {
-      const response = await fetch('http://localhost:8000/api/files/check-missing', {
+      const response = await fetch(`${config.apiBaseUrl}/files/check-missing`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

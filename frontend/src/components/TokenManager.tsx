@@ -1,5 +1,6 @@
 import { Check, Edit, Key, Plus, Power, PowerOff, Save, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import config from '../config'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 import { Input } from './ui/Input'
@@ -33,7 +34,7 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
     const loadTokens = useCallback(async () => {
         setIsLoading(true)
         try {
-            const response = await fetch('http://localhost:8000/api/tokens')
+            const response = await fetch(`${config.apiBaseUrl}/tokens`)
             if (response.ok) {
                 const data = await response.json()
                 setTokens(data)
@@ -56,7 +57,7 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
 
         setIsSaving(true)
         try {
-            const response = await fetch('http://localhost:8000/api/tokens/save', {
+            const response = await fetch(`${config.apiBaseUrl}/tokens/save`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -89,7 +90,7 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
 
     const activateToken = async (tokenId: number) => {
         try {
-            const response = await fetch('http://localhost:8000/api/tokens/activate', {
+            const response = await fetch(`${config.apiBaseUrl}/tokens/activate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -117,7 +118,7 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
 
     const deactivateToken = async (tokenId: number) => {
         try {
-            const response = await fetch('http://localhost:8000/api/tokens/deactivate', {
+            const response = await fetch(`${config.apiBaseUrl}/tokens/deactivate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -146,7 +147,7 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
         }
 
         try {
-            const response = await fetch(`http://localhost:8000/api/tokens/${tokenId}`, {
+            const response = await fetch(`${config.apiBaseUrl}/tokens/${tokenId}`, {
                 method: 'DELETE'
             })
 
@@ -182,7 +183,7 @@ function TokenManager({ onTokenChange }: TokenManagerProps) {
         }
 
         try {
-            const response = await fetch(`http://localhost:8000/api/tokens/${editingTokenId}/rename`, {
+            const response = await fetch(`${config.apiBaseUrl}/tokens/${editingTokenId}/rename`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

@@ -12,7 +12,9 @@ from db_manager import DatabaseManager
 def migrate_tokens_to_accounts():
     """Мигрирует токены из saved_tokens в yandex_accounts"""
 
-    db_path = os.path.join(os.path.dirname(__file__), "yandex_music.db")
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    os.makedirs(data_dir, exist_ok=True)
+    db_path = os.path.join(data_dir, "yandex_music.db")
     db_manager = DatabaseManager(db_path)
 
     print("🔄 Начинаем миграцию токенов...")

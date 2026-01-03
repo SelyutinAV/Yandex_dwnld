@@ -237,3 +237,7 @@ def _get_ogg_cover_info(file_path: str) -> Tuple[Optional[bytes], str]:
     except Exception as e:
         logger.error(f"Ошибка чтения OGG файла {file_path}: {e}")
         return None, "error"
+
+
+
+

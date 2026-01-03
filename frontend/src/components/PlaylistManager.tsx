@@ -1,6 +1,7 @@
 import { AlertCircle, CheckCircle, Download, Music, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAppContext } from '../contexts/AppContext'
+import config from '../config'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 
@@ -26,7 +27,7 @@ function PlaylistManager() {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch('http://localhost:8000/api/playlists')
+      const response = await fetch(`${config.apiBaseUrl}/playlists`)
 
       if (!response.ok) {
         if (response.status === 400) {
@@ -52,7 +53,7 @@ function PlaylistManager() {
 
   const loadPlaylistProgress = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/downloads/queue')
+      const response = await fetch(`${config.apiBaseUrl}/downloads/queue`)
       if (response.ok) {
         const data = await response.json()
         const queue = data.queue || []
@@ -126,7 +127,7 @@ function PlaylistManager() {
 
       // Шаг 1: Формируем список треков для каждого плейлиста
       for (const playlistId of selectedPlaylists) {
-        const response = await fetch('http://localhost:8000/api/download/playlist/preview', {
+        const response = await fetch(`${config.apiBaseUrl}/download/playlist/preview`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

@@ -1,6 +1,7 @@
 import { AlertCircle, CheckCircle, Download, Pause, Play, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAppContext } from '../contexts/AppContext'
+import config from '../config'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 import { ProgressBar } from './ui/ProgressBar'
@@ -113,7 +114,7 @@ function DownloadQueue() {
 
   const loadProgress = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/downloads/progress')
+      const response = await fetch(`${config.apiBaseUrl}/downloads/progress`)
       if (response.ok) {
         const data = await response.json()
 
@@ -145,7 +146,7 @@ function DownloadQueue() {
 
     try {
       // Используем новый API эндпоинт
-      const response = await fetch('http://localhost:8000/api/queue/list')
+      const response = await fetch(`${config.apiBaseUrl}/queue/list`)
 
       if (response.ok) {
         const data = await response.json()
@@ -172,7 +173,7 @@ function DownloadQueue() {
   const loadDownloadStats = async () => {
     try {
       // Используем новый API для статистики очереди
-      const response = await fetch('http://localhost:8000/api/queue/stats')
+      const response = await fetch(`${config.apiBaseUrl}/queue/stats`)
       if (response.ok) {
         const data = await response.json()
         
@@ -218,7 +219,7 @@ function DownloadQueue() {
     try {
       // Используем новые эндпоинты паузы/возобновления
       const endpoint = isPaused ? '/api/queue/resume' : '/api/queue/pause'
-      const response = await fetch(`http://localhost:8000${endpoint}`, {
+      const response = await fetch(`${config.apiBaseUrl}${endpoint}`, {
         method: 'POST'
       })
 
@@ -237,7 +238,7 @@ function DownloadQueue() {
   const removeTrack = async (trackId: string) => {
     try {
       // Используем новый эндпоинт удаления
-      const response = await fetch(`http://localhost:8000/api/queue/track/${trackId}`, {
+      const response = await fetch(`${config.apiBaseUrl}/queue/track/${trackId}`, {
         method: 'DELETE'
       })
 
@@ -254,7 +255,7 @@ function DownloadQueue() {
 
   const retryTrack = async (trackId: string) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/downloads/${trackId}/retry`, {
+      const response = await fetch(`${config.apiBaseUrl}/downloads/${trackId}/retry`, {
         method: 'POST'
       })
 
@@ -293,7 +294,7 @@ function DownloadQueue() {
   const clearCompleted = async () => {
     try {
       // Используем новый эндпоинт
-      const response = await fetch('http://localhost:8000/api/queue/clear-completed', {
+      const response = await fetch(`${config.apiBaseUrl}/queue/clear-completed`, {
         method: 'DELETE'
       })
 
@@ -344,7 +345,7 @@ function DownloadQueue() {
   const startDownloadQueue = async () => {
     try {
       // Используем новый эндпоинт
-      const response = await fetch('http://localhost:8000/api/queue/start', {
+      const response = await fetch(`${config.apiBaseUrl}/queue/start`, {
         method: 'POST'
       })
 

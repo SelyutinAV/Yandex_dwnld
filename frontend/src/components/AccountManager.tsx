@@ -14,9 +14,11 @@ import {
     Shield,
     Trash2,
     User,
-    XCircle
+    XCircle,
+    AlertCircle
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import config from '../config'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 import { Input } from './ui/Input'
@@ -58,11 +60,13 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
     const [editingTokens, setEditingTokens] = useState<{ [key: number]: boolean }>({})
     const [editOAuthToken, setEditOAuthToken] = useState('')
     const [editSessionIdToken, setEditSessionIdToken] = useState('')
+    const [testingTokens, setTestingTokens] = useState<{ [key: number]: { oauth?: boolean, session_id?: boolean, both?: boolean } }>({})
+    const [testResults, setTestResults] = useState<{ [key: number]: { oauth?: any, session_id?: any, both?: any } }>({})
 
     const loadAccounts = useCallback(async () => {
         setIsLoading(true)
         try {
-            const response = await fetch('http://localhost:8000/api/accounts')
+            const response = await fetch(`${config.apiBaseUrl}/accounts`)
             if (response.ok) {
                 const data = await response.json()
                 setAccounts(data)
@@ -90,7 +94,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
 
         setIsSaving(true)
         try {
-            const response = await fetch('http://localhost:8000/api/accounts/save', {
+            const response = await fetch(`${config.apiBaseUrl}/accounts/save`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -124,7 +128,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
 
     const activateAccount = async (accountId: number) => {
         try {
-            const response = await fetch('http://localhost:8000/api/accounts/activate', {
+            const response = await fetch(`${config.apiBaseUrl}/accounts/activate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -152,7 +156,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
 
     const deactivateAccount = async (accountId: number) => {
         try {
-            const response = await fetch('http://localhost:8000/api/accounts/deactivate', {
+            const response = await fetch(`${config.apiBaseUrl}/accounts/deactivate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -194,7 +198,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
         }
 
         try {
-            const response = await fetch(`http://localhost:8000/api/accounts/${accountId}`, {
+            const response = await fetch(`${config.apiBaseUrl}/accounts/${accountId}`, {
                 method: 'DELETE'
             })
 
@@ -221,7 +225,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
         }
 
         try {
-            const response = await fetch(`http://localhost:8000/api/accounts/${accountId}/rename`, {
+            const response = await fetch(`${config.apiBaseUrl}/accounts/${accountId}/rename`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -247,7 +251,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
 
     const updateUsername = async (accountId: number) => {
         try {
-            const response = await fetch(`http://localhost:8000/api/accounts/${accountId}/update-username`, {
+            const response = await fetch(`${config.apiBaseUrl}/accounts/${accountId}/update-username`, {
                 method: 'PUT'
             })
 
@@ -278,24 +282,30 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
     }
 
     const toggleTokenEditing = (accountId: number) => {
+        const isOpening = !editingTokens[accountId]
+        
         setEditingTokens(prev => ({
             ...prev,
             [accountId]: !prev[accountId]
         }))
         
         // Загружаем полные токены при открытии формы редактирования
-        if (!editingTokens[accountId]) {
+        if (isOpening) {
             loadFullTokens(accountId)
+            // Очищаем результаты тестирования при открытии
+            setTestResults(prev => ({ ...prev, [accountId]: {} }))
         } else {
             // Сбрасываем поля редактирования при закрытии
             setEditOAuthToken('')
             setEditSessionIdToken('')
+            // Очищаем результаты тестирования при закрытии
+            setTestResults(prev => ({ ...prev, [accountId]: {} }))
         }
     }
 
     const loadFullTokens = async (accountId: number) => {
         try {
-            const response = await fetch(`http://localhost:8000/api/accounts/${accountId}/tokens`)
+            const response = await fetch(`${config.apiBaseUrl}/accounts/${accountId}/tokens`)
             if (response.ok) {
                 const data = await response.json()
                 setEditOAuthToken(data.oauth_token || '')
@@ -317,7 +327,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
 
     const copyTokenToClipboard = async (accountId: number, tokenType: 'oauth' | 'session_id') => {
         try {
-            const response = await fetch(`http://localhost:8000/api/accounts/${accountId}/tokens`)
+            const response = await fetch(`${config.apiBaseUrl}/accounts/${accountId}/tokens`)
             if (response.ok) {
                 const data = await response.json()
                 const token = tokenType === 'oauth' ? data.oauth_token : data.session_id_token
@@ -332,7 +342,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
 
     const saveTokenChanges = async (accountId: number) => {
         try {
-            const response = await fetch(`http://localhost:8000/api/accounts/save`, {
+            const response = await fetch(`${config.apiBaseUrl}/accounts/save`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -349,6 +359,8 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                 setEditingTokens(prev => ({ ...prev, [accountId]: false }))
                 setEditOAuthToken('')
                 setEditSessionIdToken('')
+                // Очищаем результаты тестирования при сохранении
+                setTestResults(prev => ({ ...prev, [accountId]: {} }))
             } else {
                 const error = await response.json()
                 alert(`Ошибка сохранения токенов: ${error.detail}`)
@@ -356,6 +368,199 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
         } catch (error) {
             console.error('Ошибка сохранения токенов:', error)
             alert('Ошибка сохранения токенов')
+        }
+    }
+
+    const testOAuthToken = async (accountId: number) => {
+        if (!editOAuthToken.trim()) {
+            alert('Пожалуйста, введите OAuth токен для тестирования')
+            return
+        }
+
+        setTestingTokens(prev => ({ ...prev, [accountId]: { ...prev[accountId], oauth: true } }))
+        setTestResults(prev => ({ ...prev, [accountId]: { ...prev[accountId], oauth: undefined } }))
+
+        try {
+            const response = await fetch(`${config.apiBaseUrl}/auth/test`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    token: editOAuthToken
+                })
+            })
+
+            const data = await response.json()
+            
+            if (response.ok) {
+                setTestResults(prev => ({
+                    ...prev,
+                    [accountId]: {
+                        ...prev[accountId],
+                        oauth: {
+                            success: true,
+                            message: data.message || 'OAuth токен работает корректно'
+                        }
+                    }
+                }))
+            } else {
+                setTestResults(prev => ({
+                    ...prev,
+                    [accountId]: {
+                        ...prev[accountId],
+                        oauth: {
+                            success: false,
+                            message: data.detail || 'Ошибка тестирования OAuth токена'
+                        }
+                    }
+                }))
+            }
+        } catch (error) {
+            setTestResults(prev => ({
+                ...prev,
+                [accountId]: {
+                    ...prev[accountId],
+                    oauth: {
+                        success: false,
+                        message: error instanceof Error ? error.message : 'Ошибка тестирования OAuth токена'
+                    }
+                }
+            }))
+        } finally {
+            setTestingTokens(prev => ({ ...prev, [accountId]: { ...prev[accountId], oauth: false } }))
+        }
+    }
+
+    const testSessionIdToken = async (accountId: number) => {
+        if (!editSessionIdToken.trim()) {
+            alert('Пожалуйста, введите Session ID токен для тестирования')
+            return
+        }
+
+        setTestingTokens(prev => ({ ...prev, [accountId]: { ...prev[accountId], session_id: true } }))
+        setTestResults(prev => ({ ...prev, [accountId]: { ...prev[accountId], session_id: undefined } }))
+
+        try {
+            const response = await fetch(`${config.apiBaseUrl}/auth/test`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    token: editSessionIdToken
+                })
+            })
+
+            const data = await response.json()
+            
+            if (response.ok) {
+                setTestResults(prev => ({
+                    ...prev,
+                    [accountId]: {
+                        ...prev[accountId],
+                        session_id: {
+                            success: true,
+                            message: data.message || 'Session ID токен работает корректно'
+                        }
+                    }
+                }))
+            } else {
+                setTestResults(prev => ({
+                    ...prev,
+                    [accountId]: {
+                        ...prev[accountId],
+                        session_id: {
+                            success: false,
+                            message: data.detail || 'Ошибка тестирования Session ID токена'
+                        }
+                    }
+                }))
+            }
+        } catch (error) {
+            setTestResults(prev => ({
+                ...prev,
+                [accountId]: {
+                    ...prev[accountId],
+                    session_id: {
+                        success: false,
+                        message: error instanceof Error ? error.message : 'Ошибка тестирования Session ID токена'
+                    }
+                }
+            }))
+        } finally {
+            setTestingTokens(prev => ({ ...prev, [accountId]: { ...prev[accountId], session_id: false } }))
+        }
+    }
+
+    const testBothTokens = async (accountId: number) => {
+        if (!editOAuthToken.trim() || !editSessionIdToken.trim()) {
+            alert('Пожалуйста, введите оба токена для тестирования')
+            return
+        }
+
+        setTestingTokens(prev => ({ ...prev, [accountId]: { ...prev[accountId], both: true } }))
+        setTestResults(prev => ({ ...prev, [accountId]: { ...prev[accountId], both: undefined } }))
+
+        try {
+            const response = await fetch(`${config.apiBaseUrl}/auth/test-dual`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    oauth_token: editOAuthToken,
+                    session_id_token: editSessionIdToken
+                })
+            })
+
+            const data = await response.json()
+            
+            if (response.ok) {
+                setTestResults(prev => ({
+                    ...prev,
+                    [accountId]: {
+                        ...prev[accountId],
+                        both: {
+                            success: true,
+                            message: data.message || 'Оба токена работают корректно',
+                            oauth_valid: data.oauth_valid,
+                            session_id_valid: data.session_id_valid,
+                            has_subscription: data.has_subscription,
+                            has_lossless_access: data.has_lossless_access,
+                            subscription_details: data.subscription_details
+                        }
+                    }
+                }))
+            } else {
+                setTestResults(prev => ({
+                    ...prev,
+                    [accountId]: {
+                        ...prev[accountId],
+                        both: {
+                            success: false,
+                            message: data.detail || 'Ошибка тестирования токенов',
+                            oauth_valid: false,
+                            session_id_valid: false
+                        }
+                    }
+                }))
+            }
+        } catch (error) {
+            setTestResults(prev => ({
+                ...prev,
+                [accountId]: {
+                    ...prev[accountId],
+                    both: {
+                        success: false,
+                        message: error instanceof Error ? error.message : 'Ошибка тестирования токенов',
+                        oauth_valid: false,
+                        session_id_valid: false
+                    }
+                }
+            }))
+        } finally {
+            setTestingTokens(prev => ({ ...prev, [accountId]: { ...prev[accountId], both: false } }))
         }
     }
 
@@ -700,9 +905,39 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                                     className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono text-xs resize-none"
                                                     rows={3}
                                                 />
-                                                <div className="text-xs text-gray-500 dark:text-gray-300 mt-1">
-                                                    Длина: {editOAuthToken.length} символов
+                                                <div className="flex items-center justify-between mt-1">
+                                                    <div className="text-xs text-gray-500 dark:text-gray-300">
+                                                        Длина: {editOAuthToken.length} символов
+                                                    </div>
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={() => testOAuthToken(account.id)}
+                                                        disabled={testingTokens[account.id]?.oauth || !editOAuthToken.trim()}
+                                                        loading={testingTokens[account.id]?.oauth}
+                                                        icon={Shield}
+                                                    >
+                                                        {testingTokens[account.id]?.oauth ? 'Тестирование...' : 'Тестировать OAuth'}
+                                                    </Button>
                                                 </div>
+                                                {testResults[account.id]?.oauth && (
+                                                    <div className={`mt-2 p-2 rounded-lg text-xs ${
+                                                        testResults[account.id].oauth.success
+                                                            ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                                                            : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                                                    }`}>
+                                                        <div className="flex items-center gap-2">
+                                                            {testResults[account.id].oauth.success ? (
+                                                                <CheckCircle size={14} className="text-green-600 dark:text-green-400" />
+                                                            ) : (
+                                                                <AlertCircle size={14} className="text-red-600 dark:text-red-400" />
+                                                            )}
+                                                            <span className={testResults[account.id].oauth.success ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'}>
+                                                                {testResults[account.id].oauth.message}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -715,11 +950,104 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                                     className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono text-xs resize-none"
                                                     rows={3}
                                                 />
-                                                <div className="text-xs text-gray-500 dark:text-gray-300 mt-1">
-                                                    Длина: {editSessionIdToken.length} символов
+                                                <div className="flex items-center justify-between mt-1">
+                                                    <div className="text-xs text-gray-500 dark:text-gray-300">
+                                                        Длина: {editSessionIdToken.length} символов
+                                                    </div>
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={() => testSessionIdToken(account.id)}
+                                                        disabled={testingTokens[account.id]?.session_id || !editSessionIdToken.trim()}
+                                                        loading={testingTokens[account.id]?.session_id}
+                                                        icon={Monitor}
+                                                    >
+                                                        {testingTokens[account.id]?.session_id ? 'Тестирование...' : 'Тестировать Session ID'}
+                                                    </Button>
                                                 </div>
+                                                {testResults[account.id]?.session_id && (
+                                                    <div className={`mt-2 p-2 rounded-lg text-xs ${
+                                                        testResults[account.id].session_id.success
+                                                            ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                                                            : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                                                    }`}>
+                                                        <div className="flex items-center gap-2">
+                                                            {testResults[account.id].session_id.success ? (
+                                                                <CheckCircle size={14} className="text-green-600 dark:text-green-400" />
+                                                            ) : (
+                                                                <AlertCircle size={14} className="text-red-600 dark:text-red-400" />
+                                                            )}
+                                                            <span className={testResults[account.id].session_id.success ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'}>
+                                                                {testResults[account.id].session_id.message}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
-                                            <div className="flex gap-2">
+                                            <div className="pt-2 border-t border-yellow-300 dark:border-yellow-700">
+                                                <Button
+                                                    variant="primary"
+                                                    size="sm"
+                                                    onClick={() => testBothTokens(account.id)}
+                                                    disabled={testingTokens[account.id]?.both || !editOAuthToken.trim() || !editSessionIdToken.trim()}
+                                                    loading={testingTokens[account.id]?.both}
+                                                    icon={Key}
+                                                    className="w-full"
+                                                >
+                                                    {testingTokens[account.id]?.both ? 'Тестирование...' : 'Тестировать оба токена'}
+                                                </Button>
+                                                {testResults[account.id]?.both && (
+                                                    <div className={`mt-3 p-3 rounded-lg text-xs ${
+                                                        testResults[account.id].both.success
+                                                            ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                                                            : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                                                    }`}>
+                                                        <div className="space-y-2">
+                                                            <div className="flex items-center gap-2">
+                                                                {testResults[account.id].both.success ? (
+                                                                    <CheckCircle size={14} className="text-green-600 dark:text-green-400" />
+                                                                ) : (
+                                                                    <AlertCircle size={14} className="text-red-600 dark:text-red-400" />
+                                                                )}
+                                                                <span className={testResults[account.id].both.success ? 'text-green-800 dark:text-green-200 font-medium' : 'text-red-800 dark:text-red-200 font-medium'}>
+                                                                    {testResults[account.id].both.message}
+                                                                </span>
+                                                            </div>
+                                                            {testResults[account.id].both.success && (
+                                                                <div className="space-y-1 pl-5">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={testResults[account.id].both.oauth_valid ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}>
+                                                                            OAuth: {testResults[account.id].both.oauth_valid ? '✓ Работает' : '✗ Не работает'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={testResults[account.id].both.session_id_valid ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}>
+                                                                            Session ID: {testResults[account.id].both.session_id_valid ? '✓ Работает' : '✗ Не работает'}
+                                                                        </span>
+                                                                    </div>
+                                                                    {testResults[account.id].both.has_subscription !== undefined && (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Crown size={12} className="text-yellow-600 dark:text-yellow-400" />
+                                                                            <span className="text-gray-700 dark:text-gray-300">
+                                                                                Подписка: {testResults[account.id].both.has_subscription ? 'Активна' : 'Неактивна'}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                    {testResults[account.id].both.has_lossless_access !== undefined && (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Music size={12} className="text-blue-600 dark:text-blue-400" />
+                                                                            <span className="text-gray-700 dark:text-gray-300">
+                                                                                Lossless: {testResults[account.id].both.has_lossless_access ? 'Доступен' : 'Недоступен'}
+                                                                            </span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="flex gap-2 pt-2 border-t border-yellow-300 dark:border-yellow-700">
                                                 <Button
                                                     variant="primary"
                                                     size="sm"
@@ -730,7 +1058,11 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                                 <Button
                                                     variant="secondary"
                                                     size="sm"
-                                                    onClick={() => toggleTokenEditing(account.id)}
+                                                    onClick={() => {
+                                                        toggleTokenEditing(account.id)
+                                                        // Очищаем результаты тестирования при отмене
+                                                        setTestResults(prev => ({ ...prev, [account.id]: {} }))
+                                                    }}
                                                 >
                                                     Отмена
                                                 </Button>

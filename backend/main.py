@@ -2,26 +2,29 @@
 Главный модуль FastAPI приложения для загрузки музыки с Яндекс.Музыки
 """
 
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional, Dict
 import os
 import sys
+from contextlib import asynccontextmanager
+from datetime import datetime
 
 # import asyncio  # Не используется
 # import logging  # Не используется
 from pathlib import Path
-from datetime import datetime
+from typing import Dict, List, Optional
+
+from db_manager import db_manager
 from dotenv import load_dotenv
+from download_queue_manager import DownloadQueueManager
+from downloader import DownloadManager
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from logger_config import get_logger, setup_logging
+from pydantic import BaseModel
 
 # Импорт наших модулей
 from yandex_client import YandexMusicClient
-from downloader import DownloadManager
-from db_manager import db_manager
-from logger_config import setup_logging, get_logger
-from download_queue_manager import DownloadQueueManager
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -67,13 +70,44 @@ app = FastAPI(
 )
 
 # Настройка CORS
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:7777")
+cors_origins = [frontend_url, "http://127.0.0.1:7777", "null"]
+# Добавляем дополнительные origins из переменной окружения, если указаны
+additional_origins = os.getenv("CORS_ORIGINS", "")
+if additional_origins:
+    cors_origins.extend([origin.strip() for origin in additional_origins.split(",")])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "null"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Обслуживание статических файлов фронтенда (только в production/Docker)
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Обслуживание фронтенда для всех не-API путей"""
+        # Если путь начинается с /api, пропускаем
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+
+        # Пробуем найти файл в static
+        file_path = static_dir / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+
+        # Если файл не найден, возвращаем index.html (для SPA роутинга)
+        index_path = static_dir / "index.html"
+        if index_path.exists():
+            return FileResponse(str(index_path))
+
+        raise HTTPException(status_code=404)
 
 
 # Модели данных
@@ -267,11 +301,14 @@ async def debug_queue():
 async def get_track_cover(track_id: str):
     """Получить обложку трека из базы данных"""
     try:
-        import sqlite3
         import os
+        import sqlite3
+
         from fastapi.responses import Response
 
-        db_path = os.path.join(os.path.dirname(__file__), "yandex_music.db")
+        data_dir = os.path.join(os.path.dirname(__file__), "data")
+        os.makedirs(data_dir, exist_ok=True)
+        db_path = os.path.join(data_dir, "yandex_music.db")
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
@@ -314,12 +351,15 @@ async def get_track_cover(track_id: str):
 async def get_queue_track_cover(track_id: str):
     """Получить обложку трека из очереди"""
     try:
-        import sqlite3
         import os
+        import sqlite3
+
         import requests
         from fastapi.responses import Response
 
-        db_path = os.path.join(os.path.dirname(__file__), "yandex_music.db")
+        data_dir = os.path.join(os.path.dirname(__file__), "data")
+        os.makedirs(data_dir, exist_ok=True)
+        db_path = os.path.join(data_dir, "yandex_music.db")
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
@@ -400,6 +440,111 @@ async def test_token(request: TokenTest):
         raise HTTPException(status_code=401, detail=f"Ошибка проверки токена: {str(e)}")
 
 
+def check_subscription_status(client: YandexMusicClient):
+    """Проверка статуса подписки через клиент"""
+    has_subscription = False
+    has_lossless_access = False
+    subscription_dict = None
+
+    try:
+        if client and client.client:
+            account = client.client.account_status()
+            subscription = account.subscription
+
+            print(f"Full account status: {account}")
+            print(f"Subscription object: {subscription}")
+            print(f"Subscription is None: {subscription is None}")
+
+            # Если subscription существует (не None), значит есть подписка
+            if subscription is not None:
+                has_subscription = True
+
+                # Преобразуем subscription в словарь для сериализации
+                subscription_dict = {}
+                try:
+                    if hasattr(subscription, "__dict__"):
+                        # Фильтруем несериализуемые объекты
+                        for key, value in subscription.__dict__.items():
+                            try:
+                                # Пробуем сериализовать значение
+                                import json
+
+                                json.dumps(value)
+                                subscription_dict[key] = value
+                            except Exception:
+                                # Если не сериализуется, преобразуем в строку
+                                subscription_dict[key] = str(value)
+                    elif hasattr(subscription, "items"):
+                        subscription_dict = dict(subscription)
+                    else:
+                        # Пытаемся получить атрибуты
+                        for attr in dir(subscription):
+                            if not attr.startswith("_"):
+                                try:
+                                    value = getattr(subscription, attr)
+                                    if not callable(value):
+                                        try:
+                                            import json
+
+                                            json.dumps(value)
+                                            subscription_dict[attr] = value
+                                        except Exception:
+                                            subscription_dict[attr] = str(value)
+                                except Exception:
+                                    pass
+                except Exception as e:
+                    print(f"Ошибка при преобразовании subscription: {e}")
+                    subscription_dict = {"error": str(e)}
+
+                print(f"Subscription dict: {subscription_dict}")
+
+                # Проверяем все возможные поля подписки
+                # для более точного определения
+                subscription_active = (
+                    subscription_dict.get("active", False)
+                    or subscription_dict.get("auto_renewable", False)
+                    or subscription_dict.get("non_auto_renewable", False)
+                    or getattr(subscription, "active", False)
+                    or getattr(subscription, "auto_renewable", False)
+                    or getattr(subscription, "non_auto_renewable", False)
+                )
+
+                # Если есть активная подписка, проверяем lossless
+                if subscription_active:
+                    has_lossless_access = True
+                else:
+                    # Проверяем другие признаки подписки
+                    has_subscription = (
+                        subscription_dict.get("had_any_subscription", False)
+                        or subscription_dict.get("can_start_trial", False)
+                        or subscription_dict.get("provider", False)
+                        or subscription_dict.get("family", False)
+                        or getattr(subscription, "had_any_subscription", False)
+                        or getattr(subscription, "can_start_trial", False)
+                    )
+
+                    # Если была подписка, но не активна,
+                    # lossless может быть недоступен
+                    has_lossless_access = subscription_active
+
+                print(
+                    f"Has subscription: {has_subscription}, "
+                    f"Has lossless: {has_lossless_access}, "
+                    f"Active: {subscription_active}"
+                )
+            else:
+                print("Subscription is None - нет подписки")
+
+    except Exception as e:
+        print(f"Ошибка при проверке подписки: {e}")
+        import traceback
+
+        traceback.print_exc()
+        # Если не удалось проверить, оставляем значения по умолчанию
+
+    return has_subscription, has_lossless_access, subscription_dict
+
+
 @app.post("/api/auth/test-dual")
 async def test_dual_tokens(request: DualTokenTest):
     """Тестирование обоих токенов (OAuth и Session ID)"""
@@ -413,99 +558,17 @@ async def test_dual_tokens(request: DualTokenTest):
         session_success = session_client.connect()
 
         if oauth_success and session_success:
-            # Оба токена работают - проверяем подписку и lossless-доступ
-            has_subscription = False
-            has_lossless_access = False
+            # Оба токена работают - проверяем подписку через OAuth (приоритет)
+            has_subscription, has_lossless_access, subscription_dict = (
+                check_subscription_status(oauth_client)
+            )
 
-            try:
-                # Используем OAuth клиент для проверки подписки
-                if oauth_client.client:
-                    account = oauth_client.client.account_status()
-                    subscription = account.subscription
-
-                    print(f"Full account status: {account}")
-                    print(f"Subscription object: {subscription}")
-
-                    # Преобразуем subscription в словарь для сериализации
-                    subscription_dict = {}
-                    try:
-                        if hasattr(subscription, "__dict__"):
-                            # Фильтруем несериализуемые объекты
-                            for key, value in subscription.__dict__.items():
-                                try:
-                                    # Пробуем сериализовать значение
-                                    import json
-
-                                    json.dumps(value)
-                                    subscription_dict[key] = value
-                                except Exception:
-                                    # Если не сериализуется, преобразуем в строку
-                                    subscription_dict[key] = str(value)
-                        elif hasattr(subscription, "items"):
-                            subscription_dict = dict(subscription)
-                        else:
-                            # Пытаемся получить атрибуты
-                            for attr in dir(subscription):
-                                if not attr.startswith("_"):
-                                    try:
-                                        value = getattr(subscription, attr)
-                                        if not callable(value):
-                                            try:
-                                                import json
-
-                                                json.dumps(value)
-                                                subscription_dict[attr] = value
-                                            except Exception:
-                                                subscription_dict[attr] = str(value)
-                                    except Exception:
-                                        pass
-                    except Exception as e:
-                        print(f"Ошибка при преобразовании subscription: {e}")
-                        subscription_dict = {"error": str(e)}
-
-                    print(f"Subscription dict: {subscription_dict}")
-
-                    # Проверяем все возможные поля подписки
-                    has_subscription = (
-                        subscription_dict.get("had_any_subscription", False)
-                        or subscription_dict.get("can_start_trial", False)
-                        or subscription_dict.get("active", False)
-                        or subscription_dict.get("non_auto_renewable", False)
-                        or subscription_dict.get("auto_renewable", False)
-                        or subscription_dict.get("provider", False)
-                        or subscription_dict.get("family", False)
-                        or
-                        # Проверяем также поля в других форматах
-                        getattr(subscription, "had_any_subscription", False)
-                        or getattr(subscription, "can_start_trial", False)
-                        or getattr(subscription, "active", False)
-                    )
-
-                    # Проверяем доступность lossless-формата
-                    has_lossless_access = (
-                        subscription_dict.get("had_any_subscription", False)
-                        or subscription_dict.get("can_start_trial", False)
-                        or subscription_dict.get("active", False)
-                        or subscription_dict.get("non_auto_renewable", False)
-                        or subscription_dict.get("auto_renewable", False)
-                        or subscription_dict.get("provider", False)
-                        or subscription_dict.get("family", False)
-                        or
-                        # Проверяем также поля в других форматах
-                        getattr(subscription, "had_any_subscription", False)
-                        or getattr(subscription, "can_start_trial", False)
-                        or getattr(subscription, "active", False)
-                    )
-
-                    print(
-                        f"Has subscription: {has_subscription}, Has lossless: {has_lossless_access}"
-                    )
-
-            except Exception as e:
-                print(f"Ошибка при проверке подписки: {e}")
-                # Если не удалось проверить, предполагаем что есть подписка
-                has_subscription = True
-                has_lossless_access = True
+            # Если через OAuth не получилось, пробуем через Session ID
+            if not has_subscription:
+                print("Пробуем проверить подписку через Session ID клиент...")
+                has_subscription, has_lossless_access, subscription_dict = (
+                    check_subscription_status(session_client)
+                )
 
             return {
                 "status": "success",
@@ -514,33 +577,49 @@ async def test_dual_tokens(request: DualTokenTest):
                 "session_id_valid": True,
                 "has_subscription": has_subscription,
                 "has_lossless_access": has_lossless_access,
-                "subscription_details": (
-                    subscription_dict if "subscription_dict" in locals() else None
-                ),
+                "subscription_details": subscription_dict,
             }
         elif oauth_success:
+            # Только OAuth работает - проверяем подписку через OAuth
+            has_subscription, has_lossless_access, subscription_dict = (
+                check_subscription_status(oauth_client)
+            )
+
             return {
                 "status": "partial",
-                "message": "OAuth токен работает, но Session ID токен недействителен",
+                "message": ("OAuth токен работает, но Session ID токен недействителен"),
                 "oauth_valid": True,
                 "session_id_valid": False,
-                "has_subscription": False,
-                "has_lossless_access": False,
+                "has_subscription": has_subscription,
+                "has_lossless_access": has_lossless_access,
+                "subscription_details": subscription_dict,
             }
         elif session_success:
+            # Только Session ID работает - проверяем подписку через Session ID
+            print("OAuth не работает, проверяем подписку через Session ID...")
+            has_subscription, has_lossless_access, subscription_dict = (
+                check_subscription_status(session_client)
+            )
+
             return {
                 "status": "partial",
-                "message": "Session ID токен работает, но OAuth токен недействителен",
+                "message": (
+                    "Session ID токен работает, " "но OAuth токен недействителен"
+                ),
                 "oauth_valid": False,
                 "session_id_valid": True,
-                "has_subscription": False,
-                "has_lossless_access": False,
+                "has_subscription": has_subscription,
+                "has_lossless_access": has_lossless_access,
+                "subscription_details": subscription_dict,
             }
         else:
             raise HTTPException(status_code=401, detail="Оба токена недействительны")
 
     except Exception as e:
         print(f"Ошибка проверки токенов: {e}")
+        import traceback
+
+        traceback.print_exc()
         raise HTTPException(
             status_code=401, detail=f"Ошибка проверки токенов: {str(e)}"
         )
@@ -579,7 +658,11 @@ async def get_token_guide():
             {
                 "number": 5,
                 "title": "Найдите запрос к API",
-                "description": 'В списке запросов найдите любой запрос к music.yandex.ru (обычно это запросы с длинными именами, содержащими "playlist", "track", "user" или "auth")',
+                "description": (
+                    "В списке запросов найдите любой запрос к music.yandex.ru "
+                    "(обычно это запросы с длинными именами, содержащими "
+                    '"playlist", "track", "user" или "auth")'
+                ),
                 "action": "Найдите запрос",
             },
             {
@@ -596,7 +679,10 @@ async def get_token_guide():
             },
         ],
         "tips": [
-            "Токен может начинаться с 'y0_' (OAuth) или '3:' (Session_id) и быть длиной более 20 символов",
+            (
+                "Токен может начинаться с 'y0_' (OAuth) или '3:' (Session_id) "
+                "и быть длиной более 20 символов"
+            ),
             "Не делитесь токеном с другими людьми",
             "При изменении пароля токен может перестать работать",
             "Убедитесь, что у вас активная подписка Яндекс.Плюс или Яндекс.Музыка",
@@ -1120,6 +1206,7 @@ async def get_playlists():
     """Получить список плейлистов пользователя (быстрая загрузка без обложек)"""
     try:
         if not yandex_client:
+            logger.error("Клиент Яндекс.Музыки не инициализирован")
             raise HTTPException(
                 status_code=400,
                 detail="Клиент не инициализирован. Проверьте токен в настройках.",
@@ -1132,21 +1219,45 @@ async def get_playlists():
             active_account = db_manager.get_active_account()
             if active_account and active_account.get("username"):
                 username = active_account["username"]
-                print(f"Используем username из активного аккаунта: {username}")
+                logger.info(f"Используем username из активного аккаунта: {username}")
             else:
                 # Fallback на старую структуру
                 active_token = db_manager.get_active_token()
                 if active_token and active_token.get("username"):
                     username = active_token["username"]
-                    print(f"Используем username из старого токена: {username}")
+                    logger.info(f"Используем username из старого токена: {username}")
         except Exception as e:
-            print(f"Ошибка получения username: {e}")
+            logger.warning(f"Ошибка получения username: {e}")
 
         # Быстрая загрузка без обложек
-        playlists = yandex_client.get_playlists(username)
-        return playlists
+        logger.info(
+            f"Запрос плейлистов для пользователя: {username or 'текущий пользователь'}"
+        )
+        try:
+            playlists = yandex_client.get_playlists(username)
+
+            if playlists is None:
+                logger.error("Метод get_playlists вернул None")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Не удалось получить плейлисты. Проверьте токен и подключение к интернету.",
+                )
+
+            logger.info(f"Успешно получено {len(playlists)} плейлистов")
+            return playlists
+        except Exception as playlist_error:
+            logger.error(f"Ошибка в get_playlists: {playlist_error}", exc_info=True)
+            raise
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e) if str(e) else f"Неизвестная ошибка: {type(e).__name__}"
+        logger.error(f"Ошибка получения плейлистов: {error_msg}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=error_msg
+            or "Не удалось получить плейлисты. Проверьте логи для деталей.",
+        )
 
 
 @app.post("/api/playlists/covers")
@@ -1374,8 +1485,10 @@ async def preview_playlist_download(request: DownloadRequest):
                     # Добавляем трек в очередь со статусом 'queued'
                     cursor.execute(
                         """
-                        INSERT INTO download_queue 
-                        (track_id, title, artist, album, playlist_id, cover, status, progress, quality, created_at, updated_at)
+                        INSERT INTO download_queue (
+                            track_id, title, artist, album, playlist_id, cover,
+                            status, progress, quality, created_at, updated_at
+                        )
                         VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)
                     """,
                         (
@@ -1399,7 +1512,11 @@ async def preview_playlist_download(request: DownloadRequest):
 
         return {
             "status": "success",
-            "message": f"Список подготовлен: {added_count} новых треков, {existing_count} уже в очереди, {already_downloaded_count} уже скачаны",
+            "message": (
+                f"Список подготовлен: {added_count} новых треков, "
+                f"{existing_count} уже в очереди, "
+                f"{already_downloaded_count} уже скачаны"
+            ),
             "added": added_count,
             "existing": existing_count,
             "already_downloaded": already_downloaded_count,
@@ -1446,9 +1563,7 @@ async def download_playlist(request: DownloadRequest):
                 status_code=400, detail="Менеджер загрузок не инициализирован"
             )
 
-        result = await download_manager.download_playlist(
-            request.playlist_id, request.quality
-        )
+        await download_manager.download_playlist(request.playlist_id, request.quality)
         return {
             "status": "success",
             "message": f"Загрузка плейлиста {request.playlist_id} начата",
@@ -1494,10 +1609,12 @@ async def get_stats():
         queue_stats = db_manager.get_download_queue_stats()
 
         # Получаем статистику скачанных файлов
-        import sqlite3
         import os
+        import sqlite3
 
-        db_path = os.path.join(os.path.dirname(__file__), "yandex_music.db")
+        data_dir = os.path.join(os.path.dirname(__file__), "data")
+        os.makedirs(data_dir, exist_ok=True)
+        db_path = os.path.join(data_dir, "yandex_music.db")
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
@@ -1518,7 +1635,7 @@ async def get_stats():
             "downloadedTracks": downloaded_tracks,
             "queueStats": queue_stats,
         }
-    except Exception as e:
+    except Exception:
         return {
             "totalTracks": 0,
             "totalSizeMB": 0,
@@ -1536,7 +1653,12 @@ async def check_missing_files():
 
         return {
             "status": "success",
-            "message": f"Проверка завершена. Проверено: {result['total_checked']}, найдено: {result['existing_files']}, отсутствует: {result['missing_files']}, удалено записей: {result['deleted_records']}",
+            "message": (
+                f"Проверка завершена. Проверено: {result['total_checked']}, "
+                f"найдено: {result['existing_files']}, "
+                f"отсутствует: {result['missing_files']}, "
+                f"удалено записей: {result['deleted_records']}"
+            ),
             "details": result,
         }
 
@@ -1809,8 +1931,8 @@ async def update_download_path(request: dict):
 async def restart_system():
     """Полный перезапуск системы"""
     try:
-        import subprocess
         import os
+        import subprocess
 
         # Получаем путь к скрипту перезапуска
         script_path = os.path.join(
@@ -2025,10 +2147,8 @@ async def list_folders(request: ListFoldersRequest):
 
         # Проверяем, не является ли это сетевой папкой
         path_str = str(folder_path)
-        if any(
-            network_path in path_str
-            for network_path in ["/run/user/", "/mnt/", "smb-share:", "nfs:", "cifs:"]
-        ):
+        network_paths = ["/run/user/", "/mnt/", "smb-share:", "nfs:", "cifs:"]
+        if any(network_path in path_str for network_path in network_paths):
             # Для сетевых папок ограничиваем количество элементов
             try:
                 items = list(folder_path.iterdir())
@@ -2287,7 +2407,6 @@ async def scan_filesystem(request: ScanRequest):
             cursor.execute("DELETE FROM downloaded_tracks")
 
             # Сканируем все файлы заново для полной статистики
-            import os
             from pathlib import Path
 
             audio_extensions = {".flac", ".mp3", ".aac", ".m4a", ".ogg"}
@@ -2332,7 +2451,7 @@ async def scan_filesystem(request: ScanRequest):
                                 audio = FLAC(str(file_path))
                                 if audio.pictures:
                                     cover_data = audio.pictures[0].data
-                        except Exception as e:
+                        except Exception:
                             # Если не удалось получить обложку, продолжаем без неё
                             pass
 
@@ -2355,7 +2474,11 @@ async def scan_filesystem(request: ScanRequest):
                         cursor.execute(
                             """
                             INSERT INTO downloaded_tracks 
-                            (track_id, title, artist, album, playlist_id, file_path, file_size, format, quality, cover_data, download_date)
+                            (
+                                track_id, title, artist, album, playlist_id,
+                                file_path, file_size, format, quality,
+                                cover_data, download_date
+                            )
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                             (
@@ -2391,11 +2514,11 @@ async def scan_filesystem(request: ScanRequest):
 
 
 @app.get("/api/files/cover/{track_id}")
-async def get_track_cover(track_id: str):
+async def get_file_track_cover(track_id: str):
     """Получить обложку трека"""
     try:
-        from fastapi.responses import Response
         import requests
+        from fastapi.responses import Response
 
         # Сначала пробуем получить обложку из базы данных загруженных файлов
         with db_manager.get_connection() as conn:
@@ -2502,7 +2625,7 @@ async def clear_completed_downloads():
 
 
 @app.get("/api/downloads/queue")
-async def get_download_queue():
+async def get_downloads_queue():
     """Получить очередь загрузок из базы данных"""
     try:
         queue = db_manager.get_download_queue()
@@ -3040,4 +3163,13 @@ async def queue_remove_track(track_id: str):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
+    # Получаем настройки из переменных окружения
+    api_host = os.getenv("API_HOST", "0.0.0.0")
+    api_port = int(os.getenv("API_PORT", "3333"))
+    debug = os.getenv("DEBUG", "True").lower() == "true"
+
+    logger.info(f"Запуск сервера на {api_host}:{api_port}, DEBUG={debug}")
+
+    uvicorn.run(
+        "main:app", host=api_host, port=api_port, reload=debug, log_level="info"
+    )
