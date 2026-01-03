@@ -599,7 +599,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                             <label className="block text-sm font-medium mb-2">Название аккаунта</label>
                             <Input
                                 value={newAccountName}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewAccountName(e.target.value)}
+                                onChange={(value) => setNewAccountName(value)}
                                 placeholder="Например: Основной аккаунт"
                             />
                         </div>
@@ -607,7 +607,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                             <label className="block text-sm font-medium mb-2">Username (опционально)</label>
                             <Input
                                 value={newUsername}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUsername(e.target.value)}
+                                onChange={(value) => setNewUsername(value)}
                                 placeholder="Имя пользователя"
                             />
                         </div>
@@ -615,7 +615,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                             <label className="block text-sm font-medium mb-2">OAuth токен (опционально)</label>
                             <Input
                                 value={newOAuthToken}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewOAuthToken(e.target.value)}
+                                onChange={(value) => setNewOAuthToken(value)}
                                 placeholder="y0_AgAAAAAAxxx..."
                             />
                         </div>
@@ -623,7 +623,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                             <label className="block text-sm font-medium mb-2">Session ID токен (опционально)</label>
                             <Input
                                 value={newSessionIdToken}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewSessionIdToken(e.target.value)}
+                                onChange={(value) => setNewSessionIdToken(value)}
                                 placeholder="3:1760904011.5.0.176..."
                             />
                         </div>
@@ -689,7 +689,7 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                             <div className="flex items-center gap-2">
                                                 <Input
                                                     value={editingAccountName}
-                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditingAccountName(e.target.value)}
+                                                    onChange={(value) => setEditingAccountName(value)}
                                                     className="w-48"
                                                 />
                                                 <Button
@@ -761,7 +761,6 @@ function AccountManager({ onAccountChange }: AccountManagerProps) {
                                         size="sm"
                                         onClick={() => deleteAccount(account.id)}
                                         icon={Trash2}
-                                        title={`Удалить аккаунт "${account.name}" и все связанные данные`}
                                     >
                                         Удалить
                                     </Button>
