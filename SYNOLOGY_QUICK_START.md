@@ -36,7 +36,8 @@ nano .env  # или используйте любой другой редакт�
 HOST_PORT=7777
 FRONTEND_URL=http://192.168.1.80:7777
 CORS_ORIGINS=http://192.168.1.80:7777,http://192.168.1.80
-DOWNLOAD_PATH=/volume1/music/yandex-downloads
+# DOWNLOAD_PATH не обязателен - можно настроить позже через веб-интерфейс
+# DOWNLOAD_PATH=/volume1/music/yandex-downloads
 DEFAULT_QUALITY=lossless
 DEBUG=False
 ```
@@ -50,14 +51,17 @@ DEBUG=False
 Создайте необходимые папки через File Station или SSH:
 
 ```bash
-mkdir -p /volume1/music/yandex-downloads
+# Обязательные папки
 mkdir -p /volume1/docker/yandex-downloads/logs
 mkdir -p /volume1/docker/yandex-downloads/backend/data
 
 # Установите права доступа
-chmod -R 755 /volume1/music/yandex-downloads
 chmod -R 755 /volume1/docker/yandex-downloads/logs
 chmod -R 755 /volume1/docker/yandex-downloads/backend/data
+
+# Папка для загрузок (опционально - можно настроить позже через веб-интерфейс)
+# mkdir -p /volume1/music/yandex-downloads
+# chmod -R 755 /volume1/music/yandex-downloads
 ```
 
 ## Шаг 4: Запуск через Container Manager

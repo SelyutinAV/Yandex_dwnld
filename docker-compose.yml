@@ -25,7 +25,10 @@ services:
     volumes:
       # Монтируем папку data вместо файла, чтобы Docker мог создать файл автоматически
       - ./backend/data:/app/data
-      - ${DOWNLOAD_PATH:-./downloads}:/app/downloads
+      # Папка для загрузок - монтируется только если указана в DOWNLOAD_PATH
+      # Если не указана, используется внутренняя папка /app/downloads контейнера
+      # Раскомментируйте следующую строку, если хотите монтировать внешнюю папку:
+      # - ${DOWNLOAD_PATH}:/app/downloads
       - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:

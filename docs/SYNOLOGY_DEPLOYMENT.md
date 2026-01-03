@@ -91,10 +91,13 @@
    - Host path: `/volume1/docker/yandex-downloads/backend/data` (папка, не файл!)
    - Container path: `/app/data`
 
-2. **Загрузки**:
+2. **Загрузки** (опционально):
 
+   - Если хотите сохранять музыку на Synology, добавьте volume в docker-compose.yml:
+   - Раскомментируйте строку: `- ${DOWNLOAD_PATH}:/app/downloads`
    - Host path: `/volume1/music/yandex-downloads` (или ваша папка)
    - Container path: `/app/downloads`
+   - **Примечание**: Если не монтировать, музыка будет сохраняться внутри контейнера. Путь можно настроить позже через веб-интерфейс в разделе "Настройки".
 
 3. **Логи**:
    - Host path: `/volume1/docker/yandex-downloads/logs`
@@ -180,7 +183,8 @@ nano .env
 HOST_PORT=7777
 FRONTEND_URL=http://192.168.1.80:7777
 CORS_ORIGINS=http://192.168.1.80:7777,http://192.168.1.80
-DOWNLOAD_PATH=/volume1/music/yandex-downloads
+# DOWNLOAD_PATH не обязателен - можно настроить позже через веб-интерфейс
+# DOWNLOAD_PATH=/volume1/music/yandex-downloads
 DEFAULT_QUALITY=lossless
 DEBUG=False
 ```
