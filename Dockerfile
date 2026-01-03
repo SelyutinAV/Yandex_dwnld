@@ -7,11 +7,8 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 
-# Копируем конфигурационные файлы
-COPY frontend/tsconfig.json frontend/tsconfig.node.json frontend/vite.config.ts frontend/tailwind.config.js frontend/postcss.config.js frontend/index.html ./
-
-# Копируем исходный код (включая contexts, components, hooks и т.д.)
-COPY frontend/src ./src
+# Копируем все остальные файлы (включая конфигурацию и исходники)
+COPY frontend ./
 
 # Собираем фронтенд
 RUN npm run build

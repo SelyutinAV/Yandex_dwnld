@@ -1,6 +1,6 @@
 import { FileAudio, FolderPlus, HardDrive, Headphones, Music, RefreshCw, Volume2, VolumeX, Zap, Search, Download, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useAppContext } from '../contexts/AppContext.tsx'
+import { useAppContext } from '../contexts/AppContext'
 import config from '../config'
 import FolderBrowser from './FolderBrowser'
 import { Button } from './ui/Button'

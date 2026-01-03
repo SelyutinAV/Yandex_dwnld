@@ -5,7 +5,7 @@ import FileAnalyzer from './components/FileAnalyzer'
 import PlaylistManager from './components/PlaylistManager'
 import SettingsPanel from './components/SettingsPanel'
 import { StatusBadge } from './components/ui/StatusBadge'
-import { AppProvider, useAppContext } from './contexts/AppContext.tsx'
+import { AppProvider, useAppContext } from './contexts/AppContext'
 import { useTheme } from './hooks/useTheme'
 
 type Tab = 'playlists' | 'downloads' | 'files' | 'settings'
