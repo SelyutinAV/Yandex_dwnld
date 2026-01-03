@@ -2,9 +2,18 @@
 FROM node:18-alpine AS frontend-builder
 
 WORKDIR /app/frontend
+
+# Копируем package.json и устанавливаем зависимости
 COPY frontend/package*.json ./
 RUN npm ci
-COPY frontend/ ./
+
+# Копируем конфигурационные файлы
+COPY frontend/tsconfig.json frontend/tsconfig.node.json frontend/vite.config.ts frontend/tailwind.config.js frontend/postcss.config.js frontend/index.html ./
+
+# Копируем исходный код (включая contexts, components, hooks и т.д.)
+COPY frontend/src ./src
+
+# Собираем фронтенд
 RUN npm run build
 
 FROM python:3.12-slim
