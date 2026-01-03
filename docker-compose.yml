@@ -5,16 +5,23 @@ services:
     build: .
     container_name: yandex-music-downloader
     ports:
+      # Маппинг портов: внешний порт (HOST_PORT) -> внутренний порт контейнера (8000)
+      # По умолчанию: 7777:8000 (можно изменить через переменную HOST_PORT в .env)
       - "${HOST_PORT:-7777}:8000"
     environment:
+      # Внутренние настройки приложения (не изменять)
       - API_HOST=0.0.0.0
-      - API_PORT=8000
-      - FRONTEND_URL=${FRONTEND_URL:-http://192.168.1.80:7777}
-      - CORS_ORIGINS=${CORS_ORIGINS:-}
+      - API_PORT=8000  # Внутренний порт контейнера (не изменять)
+      
+      # Настройки доступа (можно изменить через .env)
+      - FRONTEND_URL=${FRONTEND_URL:-http://192.168.1.80:7777}  # URL для доступа к приложению
+      - CORS_ORIGINS=${CORS_ORIGINS:-}  # Дополнительные CORS origins через запятую
+      
+      # Опциональные настройки (можно изменить через .env)
       - DEBUG=${DEBUG:-False}
-      - YANDEX_TOKEN=${YANDEX_TOKEN:-}
-      - DOWNLOAD_PATH=${DOWNLOAD_PATH:-/app/downloads}
-      - DEFAULT_QUALITY=${DEFAULT_QUALITY:-lossless}
+      - YANDEX_TOKEN=${YANDEX_TOKEN:-}  # Не обязателен - можно добавить через веб-интерфейс
+      - DOWNLOAD_PATH=${DOWNLOAD_PATH:-/app/downloads}  # Путь для загрузки музыки внутри контейнера
+      - DEFAULT_QUALITY=${DEFAULT_QUALITY:-lossless}  # Качество по умолчанию: lossless, hq, nq
     volumes:
       - ./backend/data/yandex_music.db:/app/yandex_music.db
       - ${DOWNLOAD_PATH:-./downloads}:/app/downloads
