@@ -103,6 +103,8 @@ const FolderBrowser: React.FC<FolderBrowserProps> = ({
 
             if (response.ok) {
                 const data = await response.json()
+                console.log('API response for path:', path, 'data:', data)
+                
                 // Сохраняем полную информацию о папках, используя path из ответа API
                 const folders = (data.folders || []).map((folder: any) => {
                     // Используем path из API, если он есть
@@ -113,6 +115,9 @@ const FolderBrowser: React.FC<FolderBrowserProps> = ({
                         hasChildren: folder.hasChildren
                     }
                 })
+                
+                console.log('Processed folders:', folders)
+                
                 setFolderContents(prev => ({
                     ...prev,
                     [path]: folders
@@ -176,7 +181,12 @@ const FolderBrowser: React.FC<FolderBrowserProps> = ({
 
     const renderFolderTree = (parentPath: string, level: number = 0): React.ReactNode => {
         const folders = folderContents[parentPath]
-        if (!folders || folders.length === 0) return null
+        console.log(`renderFolderTree for ${parentPath}, folders:`, folders)
+        
+        if (!folders || folders.length === 0) {
+            console.log(`No folders for ${parentPath}`)
+            return null
+        }
 
         return folders.map((folder) => {
             // Используем path из объекта папки, если он есть, иначе строим его
@@ -185,6 +195,8 @@ const FolderBrowser: React.FC<FolderBrowserProps> = ({
             const isSelected = selectedPath === fullPath
             const hasChildren = folder.hasChildren
             const isLoading = loadingFolders.has(fullPath)
+            
+            console.log(`Rendering folder: ${folder.name}, fullPath: ${fullPath}, hasChildren: ${hasChildren}, isExpanded: ${isExpanded}`)
 
             return (
                 <FolderTreeItem
