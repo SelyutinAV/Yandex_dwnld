@@ -31,10 +31,14 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
                 className={`flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer transition-colors ${isSelected ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800' : ''
                     }`}
                 style={{ paddingLeft: `${level * 16 + 8}px` }}
-                onClick={onSelect}
+                onClick={() => {
+                    console.log('Row clicked! name:', name)
+                    onSelect()
+                }}
             >
                 <button
                     onClick={(e) => {
+                        console.log('Button clicked! name:', name, 'hasChildren:', hasChildren)
                         e.stopPropagation()
                         onToggle()
                     }}
