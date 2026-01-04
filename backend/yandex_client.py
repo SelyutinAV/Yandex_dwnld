@@ -1119,31 +1119,60 @@ class YandexMusicClient:
             progress_callback: Функция для отслеживания прогресса
         """
         import requests
+        import time
+
+        # Максимальное количество попыток
+        max_retries = 3
+        retry_delay = 2  # секунды
 
         try:
             # Получаем прямую ссылку
             direct_link = download_info.get_direct_link()
 
-            # Получаем размер файла
-            response = requests.head(direct_link, allow_redirects=True)
-            total_size = int(response.headers.get("content-length", 0))
+            # Получаем размер файла с timeout
+            try:
+                response = requests.head(direct_link, allow_redirects=True, timeout=30)
+                total_size = int(response.headers.get("content-length", 0))
+            except Exception as e:
+                download_logger.warning(f"Не удалось получить размер файла: {e}")
+                total_size = 0
 
             download_logger.info(f"📊 Размер файла: {total_size / (1024*1024):.2f} МБ")
 
-            # Скачиваем с прогрессом
-            response = requests.get(direct_link, stream=True)
-            response.raise_for_status()
+            # Скачиваем с прогрессом и повторными попытками
+            for attempt in range(max_retries):
+                try:
+                    # Увеличиваем timeout для больших файлов: connect timeout 30s, read timeout 300s (5 минут)
+                    response = requests.get(
+                        direct_link, stream=True, timeout=(30, 300)
+                    )
+                    response.raise_for_status()
 
-            downloaded = 0
-            with open(filepath, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
+                    downloaded = 0
+                    with open(filepath, "wb") as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                                downloaded += len(chunk)
 
-                        # Вызываем callback с прогрессом
-                        if progress_callback:
-                            progress_callback(downloaded, total_size)
+                                # Вызываем callback с прогрессом
+                                if progress_callback:
+                                    progress_callback(downloaded, total_size)
+
+                    # Если дошли сюда, значит успешно скачали
+                    return
+
+                except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError, requests.exceptions.ProtocolError, OSError) as e:
+                    current_delay = retry_delay * (2 ** attempt)  # Экспоненциальная задержка
+                    if attempt < max_retries - 1:
+                        download_logger.warning(
+                            f"Ошибка соединения при попытке {attempt + 1}/{max_retries}: {e}. Повтор через {current_delay}с..."
+                        )
+                        time.sleep(current_delay)
+                    else:
+                        # Последняя попытка не удалась
+                        download_logger.error(f"Ошибка скачивания с прогрессом после {max_retries} попыток: {e}")
+                        raise
 
         except Exception as e:
             download_logger.error(f"Ошибка скачивания с прогрессом: {e}")
