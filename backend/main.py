@@ -1621,6 +1621,12 @@ async def stop_folder_scanning():
 async def save_settings(settings: Settings):
     """Сохранить настройки"""
     try:
+        # Получаем текущий путь загрузки
+        current_path = db_manager.get_setting(
+            "download_path", os.getenv("DOWNLOAD_PATH", "/home/urch/Music/Yandex")
+        )
+        path_changed = settings.downloadPath != current_path
+
         # Сохраняем настройки в базу данных
         db_manager.save_setting("download_path", settings.downloadPath)
         db_manager.save_setting("quality", settings.quality)
@@ -1635,12 +1641,32 @@ async def save_settings(settings: Settings):
 
         # Если изменился токен, обновляем клиент
         current_token = db_manager.get_setting("yandex_token", "")
-        if settings.token and settings.token != current_token:
+        token_changed = settings.token and settings.token != current_token
+        if token_changed:
             db_manager.save_setting("yandex_token", settings.token)
             update_yandex_client(settings.token)
+        # Если изменился путь загрузки или токен, обновляем менеджер очереди
+        elif path_changed:
+            # Обновляем менеджер очереди с новым путем
+            global download_queue_manager
+            if yandex_client:
+                try:
+                    download_queue_manager = DownloadQueueManager(
+                        db_manager=db_manager,
+                        yandex_client=yandex_client,
+                        download_path=settings.downloadPath,
+                    )
+                    logger.info(f"✅ Менеджер очереди обновлен с новым путем: {settings.downloadPath}")
+                except Exception as e:
+                    logger.error(f"Ошибка обновления менеджера очереди: {e}")
+            else:
+                # Если клиент не инициализирован, пробуем инициализировать заново
+                update_yandex_client()
+                download_queue_manager = get_download_queue_manager()
 
         return {"status": "saved"}
     except Exception as e:
+        logger.error(f"Ошибка сохранения настроек: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2633,33 +2659,43 @@ async def queue_add_tracks(request: AddTracksToQueueRequest):
 @app.get("/api/queue/list")
 async def queue_list(limit: Optional[int] = None):
     """Получить список треков в очереди"""
+    # Обновляем глобальную переменную на случай, если она была обновлена
+    global download_queue_manager
+    download_queue_manager = get_download_queue_manager()
+    
     if not download_queue_manager:
+        logger.error("Менеджер очереди не инициализирован")
         raise HTTPException(
-            status_code=400, detail="Менеджер очереди не инициализирован"
+            status_code=400, detail="Менеджер очереди не инициализирован. Проверьте настройки и токен."
         )
 
     try:
         queue = download_queue_manager.get_queue(limit)
         return {"queue": queue}
     except Exception as e:
-        logger.error(f"Ошибка получения очереди: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Ошибка получения очереди: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка получения очереди: {str(e)}")
 
 
 @app.get("/api/queue/stats")
 async def queue_stats():
     """Получить статистику очереди"""
+    # Обновляем глобальную переменную на случай, если она была обновлена
+    global download_queue_manager
+    download_queue_manager = get_download_queue_manager()
+    
     if not download_queue_manager:
+        logger.error("Менеджер очереди не инициализирован")
         raise HTTPException(
-            status_code=400, detail="Менеджер очереди не инициализирован"
+            status_code=400, detail="Менеджер очереди не инициализирован. Проверьте настройки и токен."
         )
 
     try:
         stats = download_queue_manager.get_stats()
         return stats
     except Exception as e:
-        logger.error(f"Ошибка получения статистики: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Ошибка получения статистики: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ошибка получения статистики: {str(e)}")
 
 
 @app.post("/api/queue/start")
