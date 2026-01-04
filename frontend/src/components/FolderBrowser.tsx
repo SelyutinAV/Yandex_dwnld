@@ -80,13 +80,19 @@ const FolderBrowser: React.FC<FolderBrowserProps> = ({
 
     // Загружаем содержимое папки через API
     const loadFolderContents = useCallback(async (path: string) => {
+        console.log('loadFolderContents called for:', path)
+        console.log('Current folderContents keys:', Object.keys(folderContents))
+        
         if (folderContents[path]) {
+            console.log('Folder already loaded:', path)
             return // Уже загружено
         }
 
+        console.log('Loading folder:', path)
         setLoadingFolders(prev => new Set(prev).add(path))
 
         try {
+            console.log('Fetching folders for path:', path)
             const response = await fetch(`${config.apiBaseUrl}/folders/list`, {
                 method: 'POST',
                 headers: {
@@ -141,13 +147,17 @@ const FolderBrowser: React.FC<FolderBrowserProps> = ({
     }, [isOpen, loadFolderContents])
 
     const toggleFolder = async (path: string) => {
+        console.log('toggleFolder called with path:', path)
         const newExpandedFolders = new Set(expandedFolders)
 
         if (expandedFolders.has(path)) {
+            console.log('Closing folder:', path)
             newExpandedFolders.delete(path)
         } else {
+            console.log('Opening folder:', path)
             newExpandedFolders.add(path)
             // Загружаем содержимое папки при раскрытии
+            console.log('Loading folder contents for:', path)
             await loadFolderContents(path)
         }
 
