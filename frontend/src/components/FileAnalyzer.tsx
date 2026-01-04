@@ -824,8 +824,7 @@ function FileAnalyzer() {
                       </div>
                     </button>
                   )
-                }
-              ))}
+                })}
               <button
                 onClick={() => {
                   setSelectedQuality(null)
