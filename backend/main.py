@@ -71,28 +71,10 @@ app.add_middleware(CORSMiddleware, **cors_settings)
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 
 # Обслуживание статических файлов фронтенда (только в production/Docker)
+# Монтируем статические файлы, но catch-all роут будет зарегистрирован в конце
 static_dir = get_static_dir()
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        """Обслуживание фронтенда для всех не-API путей"""
-        # Если путь начинается с api, это API запрос - не обрабатываем здесь
-        if full_path == "api" or full_path.startswith("api/"):
-            raise HTTPException(status_code=404)
-
-        # Пробуем найти файл в static
-        file_path = static_dir / full_path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(str(file_path))
-
-        # Если файл не найден, возвращаем index.html (для SPA роутинга)
-        index_path = static_dir / "index.html"
-        if index_path.exists():
-            return FileResponse(str(index_path))
-
-        raise HTTPException(status_code=404)
 
 
 # Импорт моделей
@@ -2777,6 +2759,30 @@ async def queue_remove_track(track_id: str):
     except Exception as e:
         logger.error(f"Ошибка удаления трека: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Обслуживание фронтенда для всех не-API путей (должно быть в конце, после всех API endpoints)
+# В FastAPI порядок регистрации роутов важен - более общие роуты должны быть последними
+static_dir = get_static_dir()
+if static_dir.exists():
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Обслуживание фронтенда для всех не-API путей"""
+        # Если путь начинается с api, это API запрос - не обрабатываем здесь
+        if full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+
+        # Пробуем найти файл в static
+        file_path = static_dir / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+
+        # Если файл не найден, возвращаем index.html (для SPA роутинга)
+        index_path = static_dir / "index.html"
+        if index_path.exists():
+            return FileResponse(str(index_path))
+
+        raise HTTPException(status_code=404)
 
 
 if __name__ == "__main__":
