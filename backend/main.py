@@ -127,12 +127,6 @@ def update_yandex_client(token: Optional[str] = None):
 
 
 # Эндпоинты
-@app.get("/")
-async def root():
-    """Корневой эндпоинт"""
-    return {"message": "Yandex Music Downloader API", "version": "1.0.0"}
-
-
 @app.get("/api/health")
 async def health_check():
     """Проверка состояния API"""
@@ -2770,6 +2764,13 @@ if static_dir.exists():
         """Обслуживание фронтенда для всех не-API путей"""
         # Если путь начинается с api, это API запрос - не обрабатываем здесь
         if full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+        
+        # Если путь пустой или корневой, возвращаем index.html
+        if not full_path or full_path == "/":
+            index_path = static_dir / "index.html"
+            if index_path.exists():
+                return FileResponse(str(index_path))
             raise HTTPException(status_code=404)
 
         # Пробуем найти файл в static
