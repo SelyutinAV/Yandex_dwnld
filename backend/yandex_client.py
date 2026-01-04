@@ -2,10 +2,11 @@
 Клиент для работы с API Яндекс.Музыки
 """
 
-from typing import List, Optional, Callable
-from yandex_music import Client, Playlist, Track
-import os
 import logging
+import os
+from typing import Callable, List, Optional
+
+from yandex_music import Client, Playlist, Track
 
 # Логгер для Яндекс клиента
 logger = logging.getLogger("yandex")
@@ -125,7 +126,9 @@ class YandexMusicClient:
         if not self.client:
             if not self.connect():
                 logger.error("Не удалось подключиться к Яндекс.Музыке")
-                raise Exception("Не удалось подключиться к Яндекс.Музыке. Проверьте токен.")
+                raise Exception(
+                    "Не удалось подключиться к Яндекс.Музыке. Проверьте токен."
+                )
 
         try:
             # Получаем все плейлисты пользователя
@@ -139,7 +142,9 @@ class YandexMusicClient:
                 account = self.client.account_status()
                 if not account:
                     logger.error("Не удалось получить информацию об аккаунте")
-                    raise Exception("Не удалось получить информацию об аккаунте. Проверьте токен.")
+                    raise Exception(
+                        "Не удалось получить информацию об аккаунте. Проверьте токен."
+                    )
 
                 logger.info(
                     f"Аккаунт получен: {account.account.login if account.account.login else 'Без логина'}"
@@ -147,17 +152,23 @@ class YandexMusicClient:
 
                 # Если нет UID, но есть логин, попробуем получить плейлисты с логином
                 if not account.account.uid and account.account.login:
-                    logger.warning(f"UID не найден, но есть логин: {account.account.login}")
+                    logger.warning(
+                        f"UID не найден, но есть логин: {account.account.login}"
+                    )
                     logger.info("Пробуем получить плейлисты с логином...")
                 elif not account.account.uid and not account.account.login:
-                    logger.warning("UID и логин не найдены, пробуем с переданным логином...")
+                    logger.warning(
+                        "UID и логин не найдены, пробуем с переданным логином..."
+                    )
                     if username:
                         logger.info(f"Используем переданный логин: {username}")
                     else:
                         logger.info("Логин не передан, попробуем без параметров")
 
             except Exception as auth_error:
-                logger.error(f"Ошибка проверки авторизации: {auth_error}", exc_info=True)
+                logger.error(
+                    f"Ошибка проверки авторизации: {auth_error}", exc_info=True
+                )
                 raise Exception(f"Ошибка авторизации: {str(auth_error)}")
 
             # Получаем плейлисты пользователя
@@ -181,7 +192,9 @@ class YandexMusicClient:
                     else:
                         raise Exception("Логин не найден")
                 except Exception as login_error:
-                    logger.warning(f"Ошибка получения плейлистов с логином: {login_error}")
+                    logger.warning(
+                        f"Ошибка получения плейлистов с логином: {login_error}"
+                    )
                     # Попробуем без параметров
                     try:
                         logger.info("Пробуем без параметров...")
@@ -189,9 +202,11 @@ class YandexMusicClient:
                     except Exception as fallback_error:
                         logger.error(
                             f"Ошибка получения плейлистов (fallback): {fallback_error}",
-                            exc_info=True
+                            exc_info=True,
                         )
-                        raise Exception(f"Не удалось получить плейлисты: {str(fallback_error)}")
+                        raise Exception(
+                            f"Не удалось получить плейлисты: {str(fallback_error)}"
+                        )
 
             result = []
 
@@ -290,7 +305,9 @@ class YandexMusicClient:
 
         except Exception as e:
             error_msg = str(e) if str(e) else f"Неизвестная ошибка: {type(e).__name__}"
-            logger.error(f"Общая ошибка получения плейлистов: {error_msg}", exc_info=True)
+            logger.error(
+                f"Общая ошибка получения плейлистов: {error_msg}", exc_info=True
+            )
             raise Exception(f"Ошибка получения плейлистов: {error_msg}")
 
     def get_playlist_tracks(
@@ -444,21 +461,25 @@ class YandexMusicClient:
                             genre = None
                             label = None
                             version = None
-                            
+
                             if track.albums and len(track.albums) > 0:
                                 album = track.albums[0]
                                 album_title = getattr(album, "title", None)
                                 year = getattr(album, "year", None)
                                 genre = getattr(album, "genre", None)
                                 # Получаем первый лейбл если есть
-                                if hasattr(album, "labels") and album.labels and len(album.labels) > 0:
+                                if (
+                                    hasattr(album, "labels")
+                                    and album.labels
+                                    and len(album.labels) > 0
+                                ):
                                     label = getattr(album.labels[0], "name", None)
                                 version = getattr(album, "version", None)
-                            
+
                             # Получаем версию трека если не найдена в альбоме
                             if not version:
                                 version = getattr(track, "version", None)
-                            
+
                             # Попытка получить ISRC
                             isrc = None
                             if hasattr(track, "isrc"):
@@ -573,21 +594,25 @@ class YandexMusicClient:
                     genre = None
                     label = None
                     version = None
-                    
+
                     if track.albums and len(track.albums) > 0:
                         album = track.albums[0]
                         album_title = getattr(album, "title", None)
                         year = getattr(album, "year", None)
                         genre = getattr(album, "genre", None)
                         # Получаем первый лейбл если есть
-                        if hasattr(album, "labels") and album.labels and len(album.labels) > 0:
+                        if (
+                            hasattr(album, "labels")
+                            and album.labels
+                            and len(album.labels) > 0
+                        ):
                             label = getattr(album.labels[0], "name", None)
                         version = getattr(album, "version", None)
-                    
+
                     # Получаем версию трека если не найдена в альбоме
                     if not version:
                         version = getattr(track, "version", None)
-                    
+
                     # Попытка получить ISRC (может быть в разных местах)
                     isrc = None
                     if hasattr(track, "isrc"):
@@ -714,8 +739,9 @@ class YandexMusicClient:
                                 download_logger.info(f"💾 Сохраняем в: {output_path}")
                                 download_logger.info(f"📥 Начинаем скачивание...")
 
-                                import requests
                                 import tempfile
+
+                                import requests
 
                                 # Проверяем нужна ли расшифровка
                                 needs_decrypt = flac_format.get("transport") == "encraw"
@@ -1118,8 +1144,9 @@ class YandexMusicClient:
             filepath: Путь для сохранения файла
             progress_callback: Функция для отслеживания прогресса
         """
-        import requests
         import time
+
+        import requests
 
         # Максимальное количество попыток
         max_retries = 3
@@ -1143,9 +1170,7 @@ class YandexMusicClient:
             for attempt in range(max_retries):
                 try:
                     # Увеличиваем timeout для больших файлов: connect timeout 30s, read timeout 300s (5 минут)
-                    response = requests.get(
-                        direct_link, stream=True, timeout=(30, 300)
-                    )
+                    response = requests.get(direct_link, stream=True, timeout=(30, 300))
                     response.raise_for_status()
 
                     downloaded = 0
@@ -1162,8 +1187,15 @@ class YandexMusicClient:
                     # Если дошли сюда, значит успешно скачали
                     return
 
-                except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError, requests.exceptions.ProtocolError, OSError) as e:
-                    current_delay = retry_delay * (2 ** attempt)  # Экспоненциальная задержка
+                except (
+                    requests.exceptions.ChunkedEncodingError,
+                    requests.exceptions.ConnectionError,
+                    requests.exceptions.ProtocolError,
+                    OSError,
+                ) as e:
+                    current_delay = retry_delay * (
+                        2**attempt
+                    )  # Экспоненциальная задержка
                     if attempt < max_retries - 1:
                         download_logger.warning(
                             f"Ошибка соединения при попытке {attempt + 1}/{max_retries}: {e}. Повтор через {current_delay}с..."
@@ -1171,7 +1203,9 @@ class YandexMusicClient:
                         time.sleep(current_delay)
                     else:
                         # Последняя попытка не удалась
-                        download_logger.error(f"Ошибка скачивания с прогрессом после {max_retries} попыток: {e}")
+                        download_logger.error(
+                            f"Ошибка скачивания с прогрессом после {max_retries} попыток: {e}"
+                        )
                         raise
 
         except Exception as e:
