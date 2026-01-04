@@ -26,7 +26,9 @@ class DatabaseManager:
     @contextmanager
     def get_connection(self):
         """Контекстный менеджер для подключения к БД"""
-        conn = sqlite3.connect(self.db_path)
+        # timeout=5.0 позволяет ждать до 5 секунд, пока база разблокируется
+        # check_same_thread=False позволяет использовать одно подключение из разных потоков
+        conn = sqlite3.connect(self.db_path, timeout=5.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         try:
             yield conn
