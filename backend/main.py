@@ -1221,24 +1221,16 @@ async def get_stats():
         queue_stats = db_manager.get_download_queue_stats()
 
         # Получаем статистику скачанных файлов
-        import os
-        import sqlite3
+        with db_manager.get_connection() as conn:
+            cursor = conn.cursor()
 
-        data_dir = os.path.join(os.path.dirname(__file__), "data")
-        os.makedirs(data_dir, exist_ok=True)
-        db_path = os.path.join(data_dir, "yandex_music.db")
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM downloaded_tracks")
+            downloaded_tracks = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM downloaded_tracks")
-        downloaded_tracks = cursor.fetchone()[0]
-
-        cursor.execute(
-            "SELECT SUM(file_size) FROM downloaded_tracks WHERE file_size IS NOT NULL"
-        )
-        total_size = cursor.fetchone()[0] or 0
-
-        conn.close()
+            cursor.execute(
+                "SELECT SUM(file_size) FROM downloaded_tracks WHERE file_size IS NOT NULL"
+            )
+            total_size = cursor.fetchone()[0] or 0
 
         return {
             "totalTracks": downloaded_tracks,  # Всего файлов в БД

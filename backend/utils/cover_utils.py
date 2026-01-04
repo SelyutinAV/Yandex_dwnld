@@ -17,27 +17,23 @@ logger = get_logger(__name__)
 def get_track_cover_from_db(track_id: str) -> Optional[bytes]:
     """Получить обложку трека из базы данных downloaded_tracks"""
     try:
-        data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
-        os.makedirs(data_dir, exist_ok=True)
-        db_path = os.path.join(data_dir, "yandex_music.db")
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
+        with db_manager.get_connection() as conn:
+            cursor = conn.cursor()
 
-        cursor.execute(
-            """
-            SELECT cover_data FROM downloaded_tracks 
-            WHERE track_id = ? AND cover_data IS NOT NULL
-            LIMIT 1
-        """,
-            (track_id,),
-        )
+            cursor.execute(
+                """
+                SELECT cover_data FROM downloaded_tracks 
+                WHERE track_id = ? AND cover_data IS NOT NULL
+                LIMIT 1
+            """,
+                (track_id,),
+            )
 
-        row = cursor.fetchone()
-        conn.close()
+            row = cursor.fetchone()
 
-        if row and row[0]:
-            return row[0]
-        return None
+            if row and row[0]:
+                return row[0]
+            return None
     except Exception as e:
         logger.error(f"Ошибка получения обложки из БД для трека {track_id}: {e}")
         return None

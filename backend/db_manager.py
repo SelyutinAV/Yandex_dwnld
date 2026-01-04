@@ -26,10 +26,14 @@ class DatabaseManager:
     @contextmanager
     def get_connection(self):
         """Контекстный менеджер для подключения к БД"""
-        # timeout=5.0 позволяет ждать до 5 секунд, пока база разблокируется
+        # timeout=30.0 позволяет ждать до 30 секунд, пока база разблокируется
         # check_same_thread=False позволяет использовать одно подключение из разных потоков
-        conn = sqlite3.connect(self.db_path, timeout=5.0, check_same_thread=False)
+        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        # Включаем WAL режим для параллельного чтения и записи
+        conn.execute("PRAGMA journal_mode=WAL")
+        # Оптимизируем для многопоточного доступа
+        conn.execute("PRAGMA busy_timeout=30000")  # 30 секунд
         try:
             yield conn
         finally:
