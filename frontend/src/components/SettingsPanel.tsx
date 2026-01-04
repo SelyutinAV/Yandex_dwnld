@@ -526,12 +526,12 @@ function SettingsPanel({ onConnectionChange }: SettingsPanelProps) {
                   onChange={(e) => setQuality(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
-                  <option value="lossless">Lossless (FLAC 16-bit/44.1kHz) - CD качество 🎵</option>
-                  <option value="hq">High Quality (AAC 256kbps / MP3 320kbps)</option>
+                  <option value="lossless">Lossless (FLAC) - максимальное качество 🎵</option>
+                  <option value="hq">High Quality (AAC-MP4 256+ kbps или MP3 320kbps) - качественная альтернатива</option>
                   <option value="nq">Normal Quality (MP3 192kbps)</option>
                 </select>
                 <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                  💡 Для FLAC требуется подписка Яндекс.Плюс. Без подписки будет выбран лучший доступный формат.
+                  💡 Приоритет качества: 1) FLAC (Lossless), 2) AAC-MP4 256+ kbps (качественная альтернатива), 3) MP3 320 kbps. Для FLAC требуется подписка Яндекс.Плюс.
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   <strong>Рекомендуется:</strong> Lossless для максимального качества звука

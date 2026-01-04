@@ -443,11 +443,19 @@ function FileAnalyzer() {
     return Array.from(labels).sort()
   }
 
-  const getQualityBadgeColor = (quality: string) => {
-    // Улучшенная логика определения цвета с учетом битрейта
+  const getQualityBadgeColor = (quality: string, format?: string) => {
+    // Улучшенная логика определения цвета с учетом битрейта и формата
+    // Новая логика приоритетов:
+    // 1. FLAC (Lossless) - фиолетовый (лучшее)
+    // 2. AAC-MP4 (256+ kbps) - бирюзовый/синий (качественная альтернатива FLAC)
+    // 3. MP3 и другие - зеленый/желтый/красный (в зависимости от битрейта)
+    
     // Извлекаем параметры качества
     let bitDepth = 0
     let bitrate = 0
+    const fileFormat = format?.toUpperCase() || ''
+    const isAAC = fileFormat === 'AAC' || fileFormat === 'M4A' || quality.includes('AAC')
+    const isMP3 = fileFormat === 'MP3' || quality.includes('MP3')
     
     // Парсим битовую глубину
     if (quality.includes('24-bit')) {
@@ -469,16 +477,18 @@ function FileAnalyzer() {
       }
     }
     
-    // Определяем цвет на основе качества - упрощенная и логичная схема
-    if (bitDepth > 0) {  // Lossless качество - фиолетовый (лучшее)
+    // Определяем цвет на основе качества - новая логика с приоритетами
+    if (bitDepth > 0) {  // Lossless качество (FLAC) - фиолетовый (лучшее, приоритет 1)
       return 'bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-lg'
-    } else if (bitrate > 0) {  // Сжатое качество
-      // Логичная цветовая прогрессия: зеленый -> синий -> желтый -> красный
-      if (bitrate >= 320) {  // 320kbps - зеленый (отличное)
+    } else if (isAAC && bitrate >= 256) {  // AAC-MP4 256+ kbps - бирюзовый (приоритет 2, качественная альтернатива)
+      return 'bg-gradient-to-r from-teal-500 to-cyan-600 text-white shadow-lg border-2 border-cyan-400/50'
+    } else if (bitrate > 0) {  // Сжатое качество (MP3 и другие)
+      // MP3 и другие форматы: зеленый -> синий -> желтый -> красный
+      if (bitrate >= 320) {  // 320kbps - зеленый (отличное для MP3)
         return 'bg-gradient-to-r from-green-600 to-emerald-700 text-white shadow-lg'
       } else if (bitrate >= 296) {  // 296kbps - бирюзовый (очень хорошее)
         return 'bg-gradient-to-r from-teal-600 to-cyan-700 text-white shadow-lg'
-      } else if (bitrate >= 256) {  // 256kbps - синий (хорошее)
+      } else if (bitrate >= 256) {  // 256kbps - синий (хорошее для MP3, но хуже чем AAC 256)
         return 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg'
       } else if (bitrate >= 224) {  // 224kbps - голубой (хорошее)
         return 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-lg'
@@ -498,12 +508,19 @@ function FileAnalyzer() {
     }
   }
 
-  const getQualitySortOrder = (quality: string) => {
-    // Определяем порядок сортировки качества с учетом битовой глубины и частоты дискретизации
+  const getQualitySortOrder = (quality: string, format?: string) => {
+    // Новая логика приоритетов для сортировки:
+    // 1. FLAC (Lossless) - приоритет 1-5
+    // 2. AAC-MP4 (256+ kbps) - приоритет 5.5-6
+    // 3. MP3 и другие - приоритет 7+
+    
     // Извлекаем параметры качества
     let bitDepth = 0
     let sampleRate = 0
     let bitrate = 0
+    const fileFormat = format?.toUpperCase() || ''
+    const isAAC = fileFormat === 'AAC' || fileFormat === 'M4A' || quality.includes('AAC')
+    const isMP3 = fileFormat === 'MP3' || quality.includes('MP3')
     
     // Парсим битовую глубину
     if (quality.includes('24-bit')) {
@@ -525,20 +542,19 @@ function FileAnalyzer() {
       sampleRate = 22000
     }
     
-    // Парсим битрейт - используем регулярные выражения для извлечения числа
+    // Парсим битрейт
     const bitrateMatch = quality.match(/(\d+)kbps/)
     if (bitrateMatch) {
       bitrate = parseInt(bitrateMatch[1])
     } else {
-      // Попробуем найти число без kbps (например, "296/44.1kHz")
       const bitrateMatch2 = quality.match(/(\d+)(?=\/)/)
       if (bitrateMatch2) {
         bitrate = parseInt(bitrateMatch2[1])
       }
     }
     
-    // Определяем порядок сортировки
-    if (bitDepth > 0) {  // Lossless качество
+    // Определяем порядок сортировки с новой логикой приоритетов
+    if (bitDepth > 0) {  // Lossless качество (FLAC) - приоритет 1
       // Для lossless: 24-bit/48kHz лучше чем 16-bit/44.1kHz
       if (bitDepth === 24 && sampleRate >= 48000) {
         return 1  // Лучшее lossless
@@ -551,37 +567,53 @@ function FileAnalyzer() {
       } else {
         return 5  // Другое lossless
       }
-    } else if (bitrate > 0) {  // Сжатое качество
-      // Для сжатого: выше битрейт = лучше
-      // Используем обратную сортировку: чем выше битрейт, тем меньше номер (лучше)
-      // Формула: 6 + (1000 - bitrate) для максимально точной сортировки
-      return 6 + (1000 - bitrate)  // 320kbps = 686, 296kbps = 710, 256kbps = 750, etc.
+    } else if (isAAC && bitrate >= 256) {  // AAC-MP4 256+ kbps - приоритет 2 (качественная альтернатива FLAC)
+      // AAC 256+ kbps идет после FLAC, но перед MP3 320kbps
+      // Используем диапазон 5.5-6, где выше битрейт = лучше
+      return 5.5 + (1000 - bitrate) / 2000  // AAC 256kbps ≈ 5.872, AAC 320kbps ≈ 5.84
+    } else if (bitrate > 0) {  // MP3 и другие форматы - приоритет 3
+      // Для MP3 и других: выше битрейт = лучше
+      // Используем диапазон 7+, где выше битрейт = меньше номер
+      return 7 + (1000 - bitrate)  // MP3 320kbps = 687, MP3 256kbps = 751, etc.
     } else {
       return 12  // Неизвестное качество
     }
   }
 
-  const getQualityIcon = (quality: string) => {
-    // Иконки для разных уровней качества с улучшенной контрастностью
+  const getQualityIcon = (quality: string, format?: string) => {
+    // Иконки для разных уровней качества с новой логикой приоритетов
+    const fileFormat = format?.toUpperCase() || ''
+    const isAAC = fileFormat === 'AAC' || fileFormat === 'M4A' || quality.includes('AAC')
+    const bitrateMatch = quality.match(/(\d+)kbps/)
+    const bitrate = bitrateMatch ? parseInt(bitrateMatch[1]) : 0
+    
+    // Приоритет 1: FLAC (Lossless) - молния
     if (quality.includes('Lossless') || quality.includes('16-bit') || quality.includes('24-bit')) {
       return <Zap size={16} className="text-white drop-shadow-lg" />
     }
-    if (quality.includes('320kbps') || quality.includes('320')) {
+    
+    // Приоритет 2: AAC-MP4 256+ kbps - громкость с акцентом (качественная альтернатива FLAC)
+    if (isAAC && bitrate >= 256) {
       return <Volume2 size={16} className="text-white drop-shadow-lg" />
     }
-    if (quality.includes('256kbps') || quality.includes('256')) {
+    
+    // Приоритет 3: MP3 и другие форматы
+    if (bitrate >= 320) {
       return <Volume2 size={16} className="text-white drop-shadow-lg" />
     }
-    if (quality.includes('192kbps') || quality.includes('192')) {
+    if (bitrate >= 256) {
+      return <Volume2 size={16} className="text-white drop-shadow-lg" />
+    }
+    if (bitrate >= 192) {
       return <Music size={16} className="text-white drop-shadow-lg" />
     }
-    if (quality.includes('160kbps') || quality.includes('160')) {
+    if (bitrate >= 160) {
       return <Music size={16} className="text-white drop-shadow-lg" />
     }
-    if (quality.includes('128kbps') || quality.includes('128')) {
+    if (bitrate >= 128) {
       return <Headphones size={16} className="text-white drop-shadow-lg" />
     }
-    if (quality.includes('96kbps') || quality.includes('96')) {
+    if (bitrate >= 96) {
       return <Headphones size={16} className="text-white drop-shadow-lg" />
     }
     return <VolumeX size={16} className="text-white drop-shadow-lg" />
@@ -754,32 +786,45 @@ function FileAnalyzer() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {Object.entries(stats.byQuality)
                 .sort(([a], [b]) => getQualitySortOrder(a) - getQualitySortOrder(b))
-                .map(([quality, count]) => (
-                <button
-                  key={quality}
-                  onClick={() => handleQualityFilter(quality)}
-                  className={`p-4 rounded-lg transition-all duration-200 hover:scale-105 transform ${
-                    selectedQuality === quality
-                      ? 'ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/20 shadow-lg'
-                      : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 hover:shadow-md'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-full bg-gray-100 dark:bg-gray-700">
-                        {getQualityIcon(quality)}
+                .map(([quality, count]) => {
+                  // Пытаемся определить формат из строки качества
+                  let format: string | undefined = undefined
+                  if (quality.includes('AAC') || quality.toLowerCase().includes('m4a')) {
+                    format = 'AAC'
+                  } else if (quality.includes('MP3')) {
+                    format = 'MP3'
+                  } else if (quality.includes('FLAC') || quality.includes('Lossless') || quality.includes('bit')) {
+                    format = 'FLAC'
+                  }
+                  
+                  return (
+                    <button
+                      key={quality}
+                      onClick={() => handleQualityFilter(quality)}
+                      className={`p-4 rounded-lg transition-all duration-200 hover:scale-105 transform ${
+                        selectedQuality === quality
+                          ? 'ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/20 shadow-lg'
+                          : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 hover:shadow-md'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-full bg-gray-100 dark:bg-gray-700">
+                            {getQualityIcon(quality, format)}
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900 dark:text-gray-100">{quality}</div>
+                            <div className="text-sm text-gray-600 dark:text-gray-400">{count} файлов</div>
+                          </div>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${getQualityBadgeColor(quality, format)}`}>
+                          {getQualityIcon(quality, format)}
+                          {quality}
+                        </span>
                       </div>
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-gray-100">{quality}</div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">{count} файлов</div>
-                      </div>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${getQualityBadgeColor(quality)}`}>
-                      {getQualityIcon(quality)}
-                      {quality}
-                    </span>
-                  </div>
-                </button>
+                    </button>
+                  )
+                }
               ))}
               <button
                 onClick={() => {
@@ -1051,8 +1096,8 @@ function FileAnalyzer() {
                         </span>
                       )}
                       {file.quality && (
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${getQualityBadgeColor(file.quality)}`}>
-                          <span>{getQualityIcon(file.quality)}</span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${getQualityBadgeColor(file.quality, file.format)}`}>
+                          <span>{getQualityIcon(file.quality, file.format)}</span>
                           {file.quality}
                         </span>
                       )}

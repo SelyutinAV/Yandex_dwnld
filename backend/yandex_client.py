@@ -705,14 +705,96 @@ class YandexMusicClient:
                     )
 
                     if formats:
-                        # Ищем FLAC или FLAC-MP4
-                        flac_format = next(
-                            (f for f in formats if f["codec"] in ["flac", "flac-mp4"]),
-                            None,
-                        )
+                        # Ищем FLAC или FLAC-MP4 - проверяем все возможные варианты
+                        flac_format = None
+
+                        # Сначала проверяем по кодеку
+                        for fmt in formats:
+                            codec = fmt.get("codec", "").lower()
+                            if codec in ["flac", "flac-mp4", "flac_mp4"]:
+                                flac_format = fmt
+                                download_logger.info(
+                                    f"✅ FLAC найден в прямом API по кодеку: {codec}"
+                                )
+                                break
+
+                        # Если не нашли по кодеку, проверяем прямые ссылки и download_info_url
+                        if not flac_format:
+                            for fmt in formats:
+                                # Проверяем прямую ссылку
+                                direct_link = fmt.get("direct_link", "")
+                                if direct_link and "flac" in direct_link.lower():
+                                    flac_format = fmt
+                                    download_logger.info(
+                                        f"✅ FLAC найден в прямой ссылке прямого API"
+                                    )
+                                    break
+
+                                # Проверяем download_info_url
+                                download_url = fmt.get("download_info_url", "")
+                                if download_url and "flac" in download_url.lower():
+                                    flac_format = fmt
+                                    download_logger.info(
+                                        f"✅ FLAC найден в download_info_url прямого API"
+                                    )
+                                    break
+
+                        # Если FLAC не найден, пробуем найти aac-mp4 как альтернативу
+                        # aac-mp4 с 256 kbps качественнее MP3 320 kbps
+                        if not flac_format:
+                            download_logger.info(
+                                f"🔄 FLAC не найден, ищем aac-mp4 как альтернативу..."
+                            )
+                            for fmt in formats:
+                                codec = fmt.get("codec", "").lower()
+                                bitrate = fmt.get("bitrate_in_kbps", 0)
+                                # Принимаем aac-mp4 если битрейт >= 256 kbps
+                                if (
+                                    codec in ["aac-mp4", "aac", "he-aac-mp4"]
+                                    and bitrate >= 256
+                                ):
+                                    flac_format = fmt
+                                    download_logger.info(
+                                        f"✅ Найден {codec.upper()} {bitrate} kbps как альтернатива FLAC!"
+                                    )
+                                    break
+
+                        # Логируем все форматы для диагностики, если ничего не нашли
+                        if not flac_format:
+                            download_logger.warning(
+                                f"⚠️  FLAC и качественный aac-mp4 не найдены. Доступные форматы:"
+                            )
+                            for fmt in formats:
+                                codec = fmt.get("codec", "unknown")
+                                bitrate = fmt.get("bitrate_in_kbps", 0)
+                                transport = fmt.get("transport", "unknown")
+                                direct_link = fmt.get("direct_link", "")
+                                download_url = fmt.get("download_info_url", "")
+                                download_logger.warning(
+                                    f"   • {codec.upper()}: {bitrate} kbps, "
+                                    f"transport={transport}, "
+                                    f"direct_link={'есть' if direct_link else 'нет'}, "
+                                    f"download_url={'есть' if download_url else 'нет'}"
+                                )
 
                         if flac_format:
-                            download_logger.info(f"✅ FLAC доступен через прямой API!")
+                            codec_name = flac_format.get("codec", "").lower()
+                            is_flac = codec_name in ["flac", "flac-mp4", "flac_mp4"]
+                            is_aac = codec_name in ["aac-mp4", "aac", "he-aac-mp4"]
+
+                            if is_flac:
+                                download_logger.info(
+                                    f"✅ FLAC доступен через прямой API!"
+                                )
+                            elif is_aac:
+                                download_logger.info(
+                                    f"✅ AAC-MP4 (качественная альтернатива) доступен через прямой API!"
+                                )
+                            else:
+                                download_logger.info(
+                                    f"✅ Формат {codec_name.upper()} доступен через прямой API!"
+                                )
+
                             download_logger.info(f"   Кодек: {flac_format['codec']}")
                             download_logger.info(
                                 f"   Битрейт: {flac_format['bitrate_in_kbps']} kbps"
@@ -747,6 +829,8 @@ class YandexMusicClient:
                                 needs_decrypt = flac_format.get("transport") == "encraw"
                                 encryption_key = flac_format.get("key", "")
 
+                                import os
+
                                 # Если нужна расшифровка, скачиваем во временный файл
                                 if needs_decrypt and encryption_key:
                                     download_logger.info(
@@ -755,16 +839,20 @@ class YandexMusicClient:
                                     temp_encrypted = output_path + ".encrypted"
                                     temp_decrypted = output_path + ".decrypted.mp4"
 
-                                    # Удаляем существующий зашифрованный файл, если он есть
-                                    import os
-
+                                    # Удаляем существующие временные файлы, если они есть
                                     if os.path.exists(temp_encrypted):
                                         os.remove(temp_encrypted)
                                         download_logger.info(
                                             f"🗑️  Удален старый зашифрованный файл"
                                         )
+                                    if os.path.exists(temp_decrypted):
+                                        os.remove(temp_decrypted)
+                                        download_logger.info(
+                                            f"🗑️  Удален старый расшифрованный файл"
+                                        )
                                 else:
                                     temp_encrypted = output_path
+                                    temp_decrypted = None
 
                                 response = self.direct_api_client.session.get(
                                     direct_link, stream=True, timeout=120
@@ -776,28 +864,112 @@ class YandexMusicClient:
                                     )
                                     downloaded = 0
 
-                                    with open(temp_encrypted, "wb") as f:
-                                        for chunk in response.iter_content(
-                                            chunk_size=8192
-                                        ):
-                                            if chunk:
-                                                f.write(chunk)
-                                                downloaded += len(chunk)
+                                    try:
+                                        with open(temp_encrypted, "wb") as f:
+                                            for chunk in response.iter_content(
+                                                chunk_size=8192
+                                            ):
+                                                if chunk:
+                                                    f.write(chunk)
+                                                    downloaded += len(chunk)
 
-                                                if progress_callback and total_size > 0:
-                                                    progress_callback(
-                                                        downloaded, total_size
-                                                    )
+                                                    if (
+                                                        progress_callback
+                                                        and total_size > 0
+                                                    ):
+                                                        progress_callback(
+                                                            downloaded, total_size
+                                                        )
 
-                                    download_logger.info(f"✅ Файл успешно скачан!")
-                                    download_logger.info(
-                                        f"   Размер: {downloaded / (1024 * 1024):.2f} МБ"
-                                    )
+                                        download_logger.info(f"✅ Файл успешно скачан!")
+                                        download_logger.info(
+                                            f"   Размер: {downloaded / (1024 * 1024):.2f} МБ"
+                                        )
+                                        download_logger.info(
+                                            f"   Временный файл: {temp_encrypted}"
+                                        )
+                                    except Exception as download_error:
+                                        download_logger.error(
+                                            f"❌ Ошибка записи файла: {download_error}"
+                                        )
+                                        # Удаляем частично скачанный файл
+                                        import os
+
+                                        if os.path.exists(temp_encrypted):
+                                            try:
+                                                os.remove(temp_encrypted)
+                                                download_logger.info(
+                                                    f"🗑️  Удален частично скачанный файл"
+                                                )
+                                            except:
+                                                pass
+                                        return None
+
+                                    # Определяем кодек для выбора правильного расширения
+                                    codec_name = flac_format.get("codec", "").lower()
+
+                                    # Если файл не зашифрован, нужно проверить расширение
+                                    if not needs_decrypt or not encryption_key:
+                                        # Для незашифрованных файлов
+                                        if codec_name in [
+                                            "aac-mp4",
+                                            "aac",
+                                            "he-aac-mp4",
+                                        ]:
+                                            # Меняем расширение на .m4a
+                                            import os
+
+                                            output_path_m4a = (
+                                                os.path.splitext(output_path)[0]
+                                                + ".m4a"
+                                            )
+                                            if temp_encrypted != output_path:
+                                                os.rename(
+                                                    temp_encrypted, output_path_m4a
+                                                )
+                                            else:
+                                                os.rename(output_path, output_path_m4a)
+                                            download_logger.info(
+                                                f"✅ AAC-MP4 файл готов!"
+                                            )
+                                            download_logger.info(
+                                                f"   Путь: {output_path_m4a}"
+                                            )
+                                            return output_path_m4a
+                                        else:
+                                            # Для FLAC и других форматов
+                                            return output_path
 
                                     # Если нужна расшифровка и конвертация
                                     if needs_decrypt and encryption_key:
                                         try:
+                                            # Проверяем, что зашифрованный файл существует и доступен
+                                            import os
+
+                                            if not os.path.exists(temp_encrypted):
+                                                download_logger.error(
+                                                    f"❌ Зашифрованный файл не найден: {temp_encrypted}"
+                                                )
+                                                return None
+
+                                            # Проверяем права доступа
+                                            try:
+                                                if not os.access(
+                                                    temp_encrypted, os.R_OK
+                                                ):
+                                                    download_logger.error(
+                                                        f"❌ Нет прав на чтение зашифрованного файла: {temp_encrypted}"
+                                                    )
+                                                    return None
+                                            except Exception as access_error:
+                                                download_logger.warning(
+                                                    f"⚠️  Не удалось проверить права доступа: {access_error}"
+                                                )
+
                                             # Расшифровываем
+                                            download_logger.info(
+                                                f"🔓 Начинаем расшифровку: {temp_encrypted} → {temp_decrypted}"
+                                            )
                                             if not self.direct_api_client.decrypt_track(
                                                 temp_encrypted,
                                                 temp_decrypted,
@@ -806,37 +978,173 @@ class YandexMusicClient:
                                                 download_logger.error(
                                                     "❌ Не удалось расшифровать файл"
                                                 )
-                                                import os
-
+                                                # Удаляем зашифрованный файл при ошибке
                                                 if os.path.exists(temp_encrypted):
-                                                    os.remove(temp_encrypted)
+                                                    try:
+                                                        os.remove(temp_encrypted)
+                                                        download_logger.info(
+                                                            "🗑️  Удален зашифрованный файл после ошибки расшифровки"
+                                                        )
+                                                    except Exception as cleanup_error:
+                                                        download_logger.warning(
+                                                            f"⚠️  Не удалось удалить зашифрованный файл: {cleanup_error}"
+                                                        )
                                                 return None
 
-                                            # Удаляем зашифрованный файл
+                                            # Удаляем зашифрованный файл после успешной расшифровки
                                             import os
 
-                                            os.remove(temp_encrypted)
+                                            if os.path.exists(temp_encrypted):
+                                                try:
+                                                    os.remove(temp_encrypted)
+                                                    download_logger.info(
+                                                        "🗑️  Удален зашифрованный файл после расшифровки"
+                                                    )
+                                                except (
+                                                    PermissionError,
+                                                    OSError,
+                                                ) as cleanup_error:
+                                                    download_logger.warning(
+                                                        f"⚠️  Не удалось удалить зашифрованный файл: {cleanup_error}"
+                                                    )
+                                                    # На NAS это может быть нормально, продолжаем работу
 
-                                            # Конвертируем MP4 в FLAC
-                                            if not self.direct_api_client.mux_to_flac(
-                                                temp_decrypted, output_path
-                                            ):
-                                                download_logger.error(
-                                                    "❌ Не удалось конвертировать в FLAC"
+                                            # Определяем кодек и выбираем расширение файла
+                                            codec_name = flac_format.get(
+                                                "codec", ""
+                                            ).lower()
+
+                                            # Для FLAC конвертируем в FLAC
+                                            if codec_name in [
+                                                "flac",
+                                                "flac-mp4",
+                                                "flac_mp4",
+                                            ]:
+                                                # Проверяем, что расшифрованный файл существует
+                                                import os
+
+                                                if not os.path.exists(temp_decrypted):
+                                                    download_logger.error(
+                                                        f"❌ Расшифрованный файл не найден: {temp_decrypted}"
+                                                    )
+                                                    return None
+
+                                                # Проверяем права доступа к расшифрованному файлу
+                                                try:
+                                                    if not os.access(
+                                                        temp_decrypted, os.R_OK
+                                                    ):
+                                                        download_logger.error(
+                                                            f"❌ Нет прав на чтение расшифрованного файла: {temp_decrypted}"
+                                                        )
+                                                        return None
+
+                                                    # Проверяем размер файла
+                                                    file_size = os.path.getsize(
+                                                        temp_decrypted
+                                                    )
+                                                    if file_size == 0:
+                                                        download_logger.error(
+                                                            f"❌ Расшифрованный файл пуст: {temp_decrypted}"
+                                                        )
+                                                        return None
+
+                                                    download_logger.info(
+                                                        f"   Размер расшифрованного файла: {file_size / (1024*1024):.2f} МБ"
+                                                    )
+                                                except (
+                                                    PermissionError,
+                                                    OSError,
+                                                ) as check_error:
+                                                    download_logger.error(
+                                                        f"❌ Ошибка проверки расшифрованного файла: {check_error}"
+                                                    )
+                                                    return None
+
+                                                # Конвертируем MP4 с FLAC в чистый FLAC
+                                                download_logger.info(
+                                                    f"🔄 Конвертируем {temp_decrypted} → {output_path}"
                                                 )
+                                                if not self.direct_api_client.mux_to_flac(
+                                                    temp_decrypted, output_path
+                                                ):
+                                                    download_logger.error(
+                                                        "❌ Не удалось конвертировать в FLAC"
+                                                    )
+                                                    # Удаляем расшифрованный файл при ошибке
+                                                    if os.path.exists(temp_decrypted):
+                                                        try:
+                                                            os.remove(temp_decrypted)
+                                                            download_logger.info(
+                                                                "🗑️  Удален расшифрованный файл после ошибки конвертации"
+                                                            )
+                                                        except (
+                                                            Exception
+                                                        ) as cleanup_error:
+                                                            download_logger.warning(
+                                                                f"⚠️  Не удалось удалить расшифрованный файл: {cleanup_error}"
+                                                            )
+                                                    return None
+
+                                                # Удаляем временный MP4 после успешной конвертации
                                                 import os
 
                                                 if os.path.exists(temp_decrypted):
-                                                    os.remove(temp_decrypted)
-                                                return None
+                                                    try:
+                                                        os.remove(temp_decrypted)
+                                                        download_logger.info(
+                                                            "🗑️  Удален расшифрованный файл после конвертации"
+                                                        )
+                                                    except (
+                                                        PermissionError,
+                                                        OSError,
+                                                    ) as cleanup_error:
+                                                        download_logger.warning(
+                                                            f"⚠️  Не удалось удалить расшифрованный файл: {cleanup_error}"
+                                                        )
+                                                        # На NAS это может быть нормально, продолжаем работу
 
-                                            # Удаляем временный MP4
-                                            os.remove(temp_decrypted)
+                                                download_logger.info(
+                                                    f"✅ FLAC файл готов!"
+                                                )
+                                                download_logger.info(
+                                                    f"   Путь: {output_path}"
+                                                )
+                                            # Для AAC-MP4 сохраняем как M4A
+                                            elif codec_name in [
+                                                "aac-mp4",
+                                                "aac",
+                                                "he-aac-mp4",
+                                            ]:
+                                                # Меняем расширение на .m4a
+                                                import os
 
-                                            download_logger.info(f"✅ FLAC файл готов!")
-                                            download_logger.info(
-                                                f"   Путь: {output_path}"
-                                            )
+                                                output_path_m4a = (
+                                                    os.path.splitext(output_path)[0]
+                                                    + ".m4a"
+                                                )
+
+                                                # Перемещаем расшифрованный MP4 в M4A
+                                                os.rename(
+                                                    temp_decrypted, output_path_m4a
+                                                )
+                                                download_logger.info(
+                                                    f"✅ AAC-MP4 файл готов!"
+                                                )
+                                                download_logger.info(
+                                                    f"   Путь: {output_path_m4a}"
+                                                )
+                                                return output_path_m4a
+                                            else:
+                                                # Для других форматов просто перемещаем
+                                                import os
+
+                                                os.rename(temp_decrypted, output_path)
+                                                download_logger.info(f"✅ Файл готов!")
+                                                download_logger.info(
+                                                    f"   Путь: {output_path}"
+                                                )
+                                                return output_path
 
                                         except Exception as e:
                                             download_logger.error(
@@ -848,19 +1156,41 @@ class YandexMusicClient:
                                                 traceback.format_exc()
                                             )
 
-                                            # Очищаем все временные файлы
+                                            # Очищаем все временные файлы при ошибке
                                             import os
 
-                                            if os.path.exists(temp_encrypted):
-                                                os.remove(temp_encrypted)
-                                            if os.path.exists(temp_decrypted):
-                                                os.remove(temp_decrypted)
+                                            # Удаляем расшифрованный файл
+                                            if temp_decrypted and os.path.exists(
+                                                temp_decrypted
+                                            ):
+                                                try:
+                                                    os.remove(temp_decrypted)
+                                                    download_logger.info(
+                                                        f"🗑️  Удален расшифрованный файл после ошибки"
+                                                    )
+                                                except Exception as cleanup_error:
+                                                    download_logger.warning(
+                                                        f"⚠️  Не удалось удалить расшифрованный файл: {cleanup_error}"
+                                                    )
 
-                                            # Если есть зашифрованный файл, оставляем его для ручной обработки
-                                            if os.path.exists(temp_encrypted):
-                                                download_logger.warning(
-                                                    f"⚠️  Зашифрованный файл оставлен для ручной обработки: {temp_encrypted}"
-                                                )
+                                            # Удаляем зашифрованный файл
+                                            if (
+                                                temp_encrypted != output_path
+                                                and os.path.exists(temp_encrypted)
+                                            ):
+                                                try:
+                                                    os.remove(temp_encrypted)
+                                                    download_logger.info(
+                                                        f"🗑️  Удален зашифрованный файл после ошибки"
+                                                    )
+                                                except Exception as cleanup_error:
+                                                    download_logger.warning(
+                                                        f"⚠️  Не удалось удалить зашифрованный файл: {cleanup_error}"
+                                                    )
+                                                    # Если не удалось удалить, предупреждаем пользователя
+                                                    download_logger.warning(
+                                                        f"⚠️  Зашифрованный файл оставлен для ручной обработки: {temp_encrypted}"
+                                                    )
 
                                             return None
 
@@ -869,6 +1199,20 @@ class YandexMusicClient:
                                     download_logger.warning(
                                         f"⚠️  Ошибка скачивания: статус {response.status_code}"
                                     )
+                                    # Удаляем временный файл, если он был создан
+                                    import os
+
+                                    if (
+                                        temp_encrypted != output_path
+                                        and os.path.exists(temp_encrypted)
+                                    ):
+                                        try:
+                                            os.remove(temp_encrypted)
+                                            download_logger.info(
+                                                f"🗑️  Удален временный файл после ошибки скачивания"
+                                            )
+                                        except:
+                                            pass
                         else:
                             download_logger.warning(
                                 f"⚠️  FLAC не найден в ответе прямого API"
@@ -891,8 +1235,26 @@ class YandexMusicClient:
             # Детальная информация о доступных форматах
             download_logger.info(f"📋 Доступно форматов: {len(download_info)}")
             for info in download_info:
+                codec_str = getattr(info, "codec", "unknown")
+                bitrate_str = getattr(info, "bitrate_in_kbps", 0)
+
+                # Пробуем получить прямую ссылку для проверки
+                direct_link_str = ""
+                try:
+                    direct_link = info.get_direct_link()
+                    if direct_link and "flac" in direct_link.lower():
+                        direct_link_str = " [FLAC в ссылке!]"
+                except:
+                    pass
+
                 download_logger.info(
-                    f"   • {info.codec.upper()}: {info.bitrate_in_kbps} kbps"
+                    f"   • {codec_str.upper()}: {bitrate_str} kbps{direct_link_str}"
+                )
+
+                # Дополнительная диагностика для каждого формата
+                download_logger.debug(f"      Полный объект: {type(info)}")
+                download_logger.debug(
+                    f"      Атрибуты: {[attr for attr in dir(info) if not attr.startswith('_')]}"
                 )
 
             # УЛУЧШЕННАЯ ЛОГИКА ВЫБОРА КАЧЕСТВА
@@ -901,39 +1263,116 @@ class YandexMusicClient:
             if quality == "lossless":
                 # Для lossless СТРОГО ищем FLAC
                 download_logger.info(f"🎯 Поиск FLAC формата для lossless качества...")
+
+                # Варианты кодека FLAC
+                flac_codecs = ["flac", "flac-mp4", "flac_mp4"]
+
                 for info in download_info:
-                    if info.codec == "flac":
+                    codec = getattr(info, "codec", "").lower()
+
+                    # Проверяем по кодеку
+                    if codec in flac_codecs:
                         selected_info = info
                         download_logger.info(
-                            f"✅ FLAC найден! Битрейт: {info.bitrate_in_kbps} kbps"
+                            f"✅ FLAC найден по кодеку! Кодек: {codec}, Битрейт: {getattr(info, 'bitrate_in_kbps', 0)} kbps"
                         )
                         break
 
+                    # Также проверяем прямую ссылку на наличие FLAC
+                    try:
+                        direct_link = info.get_direct_link()
+                        if direct_link and "flac" in direct_link.lower():
+                            selected_info = info
+                            download_logger.info(
+                                f"✅ FLAC найден в прямой ссылке! Кодек: {codec}, Битрейт: {getattr(info, 'bitrate_in_kbps', 0)} kbps"
+                            )
+                            download_logger.info(f"   Ссылка: {direct_link[:100]}...")
+                            break
+                    except Exception as e:
+                        download_logger.debug(
+                            f"   Не удалось получить прямую ссылку для {codec}: {e}"
+                        )
+
+                # Если не нашли по кодеку или ссылке, пробуем другие методы
+                if not selected_info:
+                    # Проверяем все атрибуты объекта на наличие flac
+                    for info in download_info:
+                        codec = getattr(info, "codec", "").lower()
+                        download_logger.debug(f"   Проверяем формат: {codec}")
+
+                        # Проверяем все строковые атрибуты на наличие flac
+                        for attr_name in dir(info):
+                            if attr_name.startswith("_"):
+                                continue
+                            try:
+                                attr_value = getattr(info, attr_name, None)
+                                if (
+                                    isinstance(attr_value, str)
+                                    and "flac" in attr_value.lower()
+                                ):
+                                    download_logger.info(
+                                        f"   🔍 Обнаружен 'flac' в атрибуте {attr_name}: {attr_value[:100]}"
+                                    )
+                                    if not selected_info:
+                                        selected_info = info
+                                        download_logger.info(
+                                            f"✅ FLAC найден через атрибут {attr_name}! Кодек: {codec}"
+                                        )
+                                        break
+                            except:
+                                pass
+                        if selected_info:
+                            break
+
+                # Если FLAC не найден, ищем aac-mp4/aac как альтернативу
+                # aac-mp4 с 256+ kbps качественнее MP3 320 kbps
                 if not selected_info:
                     download_logger.warning("⚠️  FLAC недоступен!")
-                    # Проверяем подписку
-                    try:
-                        account = self.client.account_status()
-                        if account and not account.plus:
-                            download_logger.warning(
-                                "❌ FLAC доступен только с подпиской Яндекс.Плюс!"
-                            )
-                            download_logger.info(
-                                "   Будет выбран лучший доступный формат."
-                            )
-                    except:
-                        pass
+                    download_logger.info("🔄 Ищем aac-mp4/aac как альтернативу FLAC...")
 
-                    # Выбираем формат с максимальным битрейтом
-                    sorted_formats = sorted(
-                        download_info,
-                        key=lambda x: x.bitrate_in_kbps or 0,
-                        reverse=True,
-                    )
-                    selected_info = sorted_formats[0]
-                    download_logger.info(
-                        f"➡️  Выбран лучший доступный: {selected_info.codec.upper()} ({selected_info.bitrate_in_kbps} kbps)"
-                    )
+                    # Ищем AAC/AAC-MP4 с битрейтом >= 256 kbps
+                    aac_formats = []
+                    for info in download_info:
+                        codec = getattr(info, "codec", "").lower()
+                        bitrate = getattr(info, "bitrate_in_kbps", 0)
+                        if codec in ["aac", "aac-mp4", "he-aac-mp4"] and bitrate >= 256:
+                            aac_formats.append((info, bitrate))
+                            download_logger.info(
+                                f"   ✓ Найден {codec.upper()}: {bitrate} kbps"
+                            )
+
+                    if aac_formats:
+                        # Выбираем AAC с максимальным битрейтом
+                        aac_formats.sort(key=lambda x: x[1], reverse=True)
+                        selected_info = aac_formats[0][0]
+                        download_logger.info(
+                            f"✅ Выбран {selected_info.codec.upper()} ({selected_info.bitrate_in_kbps} kbps) "
+                            f"как альтернатива FLAC"
+                        )
+                    else:
+                        # Проверяем подписку
+                        try:
+                            account = self.client.account_status()
+                            if account and not account.plus:
+                                download_logger.warning(
+                                    "❌ FLAC доступен только с подпиской Яндекс.Плюс!"
+                                )
+                                download_logger.info(
+                                    "   Будет выбран лучший доступный формат."
+                                )
+                        except:
+                            pass
+
+                        # Если AAC нет, выбираем формат с максимальным битрейтом
+                        sorted_formats = sorted(
+                            download_info,
+                            key=lambda x: x.bitrate_in_kbps or 0,
+                            reverse=True,
+                        )
+                        selected_info = sorted_formats[0]
+                        download_logger.info(
+                            f"➡️  Выбран лучший доступный: {selected_info.codec.upper()} ({selected_info.bitrate_in_kbps} kbps)"
+                        )
 
             elif quality == "hq":
                 # Для HQ ищем AAC с максимальным битрейтом или MP3 320
@@ -1174,15 +1613,31 @@ class YandexMusicClient:
                     response.raise_for_status()
 
                     downloaded = 0
+                    last_callback_time = time.time()
+                    callback_interval = (
+                        0.1  # Вызывать callback не чаще раза в 0.1 секунды
+                    )
+
                     with open(filepath, "wb") as f:
-                        for chunk in response.iter_content(chunk_size=8192):
+                        # Увеличенный chunk_size для лучшей производительности (64 KB вместо 8 KB)
+                        for chunk in response.iter_content(chunk_size=65536):
                             if chunk:
                                 f.write(chunk)
                                 downloaded += len(chunk)
 
-                                # Вызываем callback с прогрессом
+                                # Вызываем callback с прогрессом (не чаще раза в 0.1 секунды)
                                 if progress_callback:
-                                    progress_callback(downloaded, total_size)
+                                    current_time = time.time()
+                                    if (
+                                        current_time - last_callback_time
+                                        >= callback_interval
+                                    ):
+                                        progress_callback(downloaded, total_size)
+                                        last_callback_time = current_time
+
+                    # Финальный callback для 100%
+                    if progress_callback:
+                        progress_callback(downloaded, total_size)
 
                     # Если дошли сюда, значит успешно скачали
                     return

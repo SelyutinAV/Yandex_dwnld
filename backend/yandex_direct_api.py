@@ -161,6 +161,7 @@ class YandexMusicDirectAPI:
             # Парсим JSON
             data = response.json()
             
+            download_logger.info(f"📦 Полный ответ API (первые 2000 символов): {str(data)[:2000]}")
             download_logger.debug(f"📦 Полный ответ API: {data}")
             
             # Согласно Rust коду, API возвращает объект с полем result
@@ -170,54 +171,108 @@ class YandexMusicDirectAPI:
                 return None
             
             # Проверяем разные форматы ответа
+            result = None
             if isinstance(data, list):
                 # Прямой список форматов
                 result = data
                 download_logger.info(f"✅ API вернул список из {len(result)} элементов")
             elif 'result' in data:
                 result_data = data['result']
+                download_logger.debug(f"   Тип result: {type(result_data)}")
+                download_logger.debug(f"   Ключи result (если dict): {list(result_data.keys()) if isinstance(result_data, dict) else 'N/A'}")
+                
                 if isinstance(result_data, dict) and 'downloadInfo' in result_data:
                     # Формат: {result: {downloadInfo: {...}}}
                     result = [result_data['downloadInfo']]
-                    download_logger.info(f"✅ API вернул downloadInfo")
+                    download_logger.info(f"✅ API вернул downloadInfo в формате dict")
+                elif isinstance(result_data, dict) and 'downloadInfoUrl' in result_data:
+                    # Альтернативный формат с downloadInfoUrl
+                    result = [result_data]
+                    download_logger.info(f"✅ API вернул формат с downloadInfoUrl")
                 elif isinstance(result_data, list):
                     # Формат: {result: [...]}
                     result = result_data
-                    download_logger.info(f"✅ API вернул {len(result)} форматов")
+                    download_logger.info(f"✅ API вернул {len(result)} форматов в списке")
+                elif isinstance(result_data, dict):
+                    # Может быть что result_data это уже один формат
+                    result = [result_data]
+                    download_logger.info(f"✅ API вернул один формат в result dict")
                 else:
                     download_logger.error(f"❌ Неизвестный формат result: {type(result_data)}")
+                    download_logger.error(f"   Содержимое: {result_data}")
                     return None
+            elif isinstance(data, dict) and 'downloadInfo' in data:
+                # Прямой формат с downloadInfo на верхнем уровне
+                result = [data['downloadInfo']]
+                download_logger.info(f"✅ API вернул downloadInfo на верхнем уровне")
+            elif isinstance(data, dict):
+                # Может быть что data это уже один формат
+                result = [data]
+                download_logger.info(f"✅ API вернул один формат на верхнем уровне")
             else:
-                download_logger.error(f"❌ Некорректный ответ API: {data}")
+                download_logger.error(f"❌ Некорректный формат ответа API: {type(data)}")
+                download_logger.error(f"   Содержимое: {str(data)[:500]}")
                 return None
             
             # Преобразуем в удобный формат
             formats = []
-            for item in result:
+            for idx, item in enumerate(result):
                 if not isinstance(item, dict):
-                    download_logger.warning(f"⚠️  Пропускаем элемент неправильного типа: {type(item)}")
+                    download_logger.warning(f"⚠️  Пропускаем элемент {idx} неправильного типа: {type(item)}")
+                    download_logger.debug(f"   Содержимое: {item}")
                     continue
-                    
-                # Получаем URL - может быть либо прямая ссылка (url), либо downloadInfoUrl
-                download_url = item.get('url', item.get('downloadInfoUrl', ''))
+                
+                download_logger.debug(f"   Обрабатываем формат {idx+1}: {list(item.keys())}")
+                
+                # Получаем URL - может быть либо прямая ссылка (url), либо downloadInfoUrl, либо downloadInfoUrl
+                download_url = item.get('url') or item.get('downloadInfoUrl') or item.get('download_info_url') or ''
+                
+                # Получаем кодек - проверяем разные варианты названий полей
+                codec = (item.get('codec') or item.get('codecName') or '').lower()
+                
+                # Получаем битрейт - проверяем разные варианты
+                bitrate = (item.get('bitrateInKbps') or 
+                          item.get('bitrate_in_kbps') or 
+                          item.get('bitrate') or 
+                          item.get('bitrateInKbps') or 0)
                 
                 format_info = {
-                    'codec': item.get('codec', '').lower(),
-                    'bitrate_in_kbps': item.get('bitrateInKbps', item.get('bitrate', 0)),
+                    'codec': codec,
+                    'bitrate_in_kbps': bitrate if isinstance(bitrate, int) else int(bitrate) if bitrate else 0,
                     'download_info_url': download_url,
-                    'direct_link': download_url if download_url.startswith('https://strm') else None,
-                    'direct': item.get('direct', download_url.startswith('https://strm')),
+                    'direct_link': download_url if download_url and download_url.startswith('https://strm') else None,
+                    'direct': item.get('direct', download_url.startswith('https://strm') if download_url else False),
                     'key': item.get('key', ''),  # Ключ для расшифровки (если transport=encraw)
                     'transport': item.get('transport', ''),  # encraw = зашифровано
                 }
                 
+                # Дополнительная диагностика - проверяем наличие flac в любых полях
+                flac_indicator = False
+                for key, value in item.items():
+                    if isinstance(value, str) and 'flac' in value.lower():
+                        flac_indicator = True
+                        download_logger.debug(f"      🔍 Обнаружен 'flac' в поле '{key}': {value[:100]}")
+                
+                if flac_indicator and codec not in ['flac', 'flac-mp4']:
+                    download_logger.warning(
+                        f"   ⚠️  FLAC индикатор найден, но кодек указан как: {codec.upper()}"
+                    )
+                    # Попробуем определить кодек по содержимому URL
+                    if download_url and 'flac' in download_url.lower():
+                        format_info['codec'] = 'flac'
+                        download_logger.info(f"      ✅ Исправлен кодек на 'flac' на основе URL")
+                
                 formats.append(format_info)
                 
-                download_logger.info(
+                log_msg = (
                     f"   • {format_info['codec'].upper()}: "
                     f"{format_info['bitrate_in_kbps']} kbps "
+                    f"transport={format_info['transport']} "
                     f"{'(direct)' if format_info['direct'] else ''}"
                 )
+                if flac_indicator or 'flac' in codec:
+                    log_msg += " [FLAC!]"
+                download_logger.info(log_msg)
             
             return formats if formats else None
             
@@ -362,6 +417,7 @@ class YandexMusicDirectAPI:
     def decrypt_track(self, encrypted_path: str, decrypted_path: str, key: str) -> bool:
         """
         Расшифровывает зашифрованный FLAC файл (transport=encraw)
+        Улучшено для работы с удаленными NAS (Synology и др.)
         
         Args:
             encrypted_path: Путь к зашифрованному файлу
@@ -375,21 +431,71 @@ class YandexMusicDirectAPI:
             download_logger.error("❌ pycryptodome не установлен. Установите: pip install pycryptodome")
             return False
         
+        import tempfile
+        import shutil
+        
+        # Для удаленных NAS используем временный файл в /tmp, затем перемещаем
+        use_temp_file = False
+        temp_decrypted = None
+        
         try:
-            download_logger.info(f"🔓 Расшифровываем FLAC файл...")
+            # Проверяем, является ли путь сетевым (NAS)
+            is_network_path = any(
+                encrypted_path.startswith(prefix) 
+                for prefix in ['/mnt/', '/run/user/', 'smb://', 'nfs://', 'cifs://']
+            ) or ':' in decrypted_path.split('/')[0] if '/' in decrypted_path else False
             
-            # Читаем зашифрованный файл
-            with open(encrypted_path, 'rb') as f:
-                encrypted_data = bytearray(f.read())
+            if is_network_path:
+                download_logger.info(f"🌐 Обнаружен сетевой путь, используем временный файл для расшифровки")
+                use_temp_file = True
+                # Создаем временный файл в /tmp
+                temp_dir = tempfile.gettempdir()
+                temp_decrypted = os.path.join(
+                    temp_dir, 
+                    f"decrypt_{os.path.basename(decrypted_path)}"
+                )
+            
+            download_logger.info(f"🔓 Расшифровываем FLAC файл...")
+            download_logger.info(f"   Входной файл: {encrypted_path}")
+            download_logger.info(f"   Выходной файл: {decrypted_path if not use_temp_file else temp_decrypted}")
+            
+            # Проверяем права доступа к входному файлу
+            if not os.path.exists(encrypted_path):
+                download_logger.error(f"❌ Зашифрованный файл не найден: {encrypted_path}")
+                return False
+            
+            try:
+                # Проверяем права на чтение
+                os.access(encrypted_path, os.R_OK)
+            except PermissionError as e:
+                download_logger.error(f"❌ Нет прав на чтение файла {encrypted_path}: {e}")
+                return False
+            
+            # Читаем зашифрованный файл с обработкой ошибок
+            try:
+                with open(encrypted_path, 'rb') as f:
+                    encrypted_data = bytearray(f.read())
+            except PermissionError as e:
+                download_logger.error(f"❌ Ошибка доступа при чтении файла: {e}")
+                return False
+            except OSError as e:
+                download_logger.error(f"❌ Ошибка файловой системы при чтении: {e}")
+                return False
+            
+            download_logger.info(f"   Размер зашифрованного файла: {len(encrypted_data) / (1024*1024):.2f} МБ")
             
             # Конвертируем hex-ключ в bytes
-            key_bytes = bytes.fromhex(key)
+            try:
+                key_bytes = bytes.fromhex(key)
+            except ValueError as e:
+                download_logger.error(f"❌ Неверный формат ключа: {e}")
+                return False
             
             if len(key_bytes) != 16:
-                raise ValueError(f"Ключ должен быть 16 байт, получено: {len(key_bytes)}")
+                download_logger.error(f"❌ Ключ должен быть 16 байт, получено: {len(key_bytes)}")
+                return False
             
             # В AES CTR mode нужен counter, а не nonce
-            # Counter состоит из 16 байт (128 бит), все нули как в Rust коде
             from Crypto.Util import Counter
             
             # Создаём counter из 128 нулевых бит
@@ -402,21 +508,91 @@ class YandexMusicDirectAPI:
             decrypted_data = cipher.decrypt(bytes(encrypted_data))
             
             # Сохраняем расшифрованный файл
-            with open(decrypted_path, 'wb') as f:
-                f.write(decrypted_data)
+            output_file = temp_decrypted if use_temp_file else decrypted_path
             
-            download_logger.info(f"✅ Файл успешно расшифрован!")
+            # Создаем директорию для выходного файла, если её нет
+            output_dir = os.path.dirname(output_file)
+            if output_dir and not os.path.exists(output_dir):
+                try:
+                    os.makedirs(output_dir, exist_ok=True)
+                except (PermissionError, OSError) as e:
+                    download_logger.error(f"❌ Не удалось создать директорию {output_dir}: {e}")
+                    return False
+            
+            # Записываем файл с retry логикой для сетевых файловых систем
+            max_write_retries = 3
+            for attempt in range(max_write_retries):
+                try:
+                    # Используем атомарную запись: сначала пишем во временный файл, затем переименовываем
+                    temp_output = output_file + '.tmp'
+                    
+                    with open(temp_output, 'wb') as f:
+                        f.write(decrypted_data)
+                    
+                    # Атомарное переименование (работает на большинстве файловых систем)
+                    os.rename(temp_output, output_file)
+                    
+                    download_logger.info(f"✅ Файл успешно расшифрован!")
+                    break
+                    
+                except PermissionError as e:
+                    if attempt < max_write_retries - 1:
+                        download_logger.warning(
+                            f"⚠️  Ошибка прав доступа при записи (попытка {attempt + 1}/{max_write_retries}): {e}"
+                        )
+                        import time
+                        time.sleep(1)  # Небольшая задержка перед повтором
+                    else:
+                        download_logger.error(f"❌ Не удалось записать файл после {max_write_retries} попыток: {e}")
+                        return False
+                except OSError as e:
+                    if attempt < max_write_retries - 1:
+                        download_logger.warning(
+                            f"⚠️  Ошибка файловой системы при записи (попытка {attempt + 1}/{max_write_retries}): {e}"
+                        )
+                        import time
+                        time.sleep(1)
+                    else:
+                        download_logger.error(f"❌ Ошибка файловой системы после {max_write_retries} попыток: {e}")
+                        return False
+            
+            # Если использовали временный файл, перемещаем на NAS
+            if use_temp_file and os.path.exists(temp_decrypted):
+                try:
+                    # Создаем директорию на NAS, если её нет
+                    nas_dir = os.path.dirname(decrypted_path)
+                    if nas_dir and not os.path.exists(nas_dir):
+                        os.makedirs(nas_dir, exist_ok=True)
+                    
+                    # Перемещаем файл на NAS
+                    shutil.move(temp_decrypted, decrypted_path)
+                    download_logger.info(f"✅ Файл перемещен на NAS: {decrypted_path}")
+                except (PermissionError, OSError, shutil.Error) as e:
+                    download_logger.error(f"❌ Не удалось переместить файл на NAS: {e}")
+                    # Оставляем файл во временной директории для ручной обработки
+                    download_logger.warning(f"⚠️  Расшифрованный файл оставлен в: {temp_decrypted}")
+                    return False
+            
             return True
             
         except Exception as e:
             download_logger.error(f"❌ Ошибка расшифровки: {e}")
             import traceback
             download_logger.error(traceback.format_exc())
+            
+            # Очищаем временные файлы при ошибке
+            if temp_decrypted and os.path.exists(temp_decrypted):
+                try:
+                    os.remove(temp_decrypted)
+                except:
+                    pass
+            
             return False
     
     def mux_to_flac(self, input_path: str, output_path: str) -> bool:
         """
         Конвертирует MP4 контейнер в FLAC используя ffmpeg
+        Улучшено для работы с удаленными NAS (Synology и др.)
         
         Args:
             input_path: Путь к входному файлу (MP4 с FLAC кодеком)
@@ -425,31 +601,143 @@ class YandexMusicDirectAPI:
         Returns:
             True если успешно
         """
+        import tempfile
+        import shutil
+        
+        # Для удаленных NAS используем временный файл в /tmp, затем перемещаем
+        use_temp_file = False
+        temp_output = None
+        
         try:
+            # Проверяем, является ли путь сетевым (NAS)
+            is_network_path = any(
+                output_path.startswith(prefix) 
+                for prefix in ['/mnt/', '/run/user/', 'smb://', 'nfs://', 'cifs://']
+            ) or ':' in output_path.split('/')[0] if '/' in output_path else False
+            
+            if is_network_path:
+                download_logger.info(f"🌐 Обнаружен сетевой путь, используем временный файл для конвертации")
+                use_temp_file = True
+                # Создаем временный файл в /tmp
+                temp_dir = tempfile.gettempdir()
+                temp_output = os.path.join(
+                    temp_dir, 
+                    f"mux_{os.path.basename(output_path)}"
+                )
+            
             download_logger.info(f"🔧 Конвертируем в FLAC...")
+            download_logger.info(f"   Входной файл: {input_path}")
+            download_logger.info(f"   Выходной файл: {output_path if not use_temp_file else temp_output}")
+            
+            # Проверяем входной файл
+            if not os.path.exists(input_path):
+                download_logger.error(f"❌ Входной файл не найден: {input_path}")
+                return False
+            
+            try:
+                os.access(input_path, os.R_OK)
+            except PermissionError as e:
+                download_logger.error(f"❌ Нет прав на чтение файла {input_path}: {e}")
+                return False
+            
+            # Определяем выходной файл
+            output_file = temp_output if use_temp_file else output_path
+            
+            # Создаем директорию для выходного файла, если её нет
+            output_dir = os.path.dirname(output_file)
+            if output_dir and not os.path.exists(output_dir):
+                try:
+                    os.makedirs(output_dir, exist_ok=True)
+                except (PermissionError, OSError) as e:
+                    download_logger.error(f"❌ Не удалось создать директорию {output_dir}: {e}")
+                    return False
+            
+            # Увеличиваем timeout для сетевых файловых систем
+            timeout = 120 if is_network_path else 60
             
             # ffmpeg -i input.mp4 -c:a copy output.flac
+            # Используем -loglevel error для уменьшения вывода
             result = subprocess.run(
-                ['ffmpeg', '-i', input_path, '-c:a', 'copy', output_path, '-y'],
+                ['ffmpeg', '-i', input_path, '-c:a', 'copy', output_file, '-y', '-loglevel', 'error'],
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=timeout
             )
             
             if result.returncode == 0:
                 download_logger.info(f"✅ Конвертация завершена!")
+                
+                # Если использовали временный файл, перемещаем на NAS
+                if use_temp_file and os.path.exists(temp_output):
+                    try:
+                        # Проверяем размер файла
+                        file_size = os.path.getsize(temp_output)
+                        if file_size == 0:
+                            download_logger.error(f"❌ Результирующий файл пуст!")
+                            os.remove(temp_output)
+                            return False
+                        
+                        # Создаем директорию на NAS, если её нет
+                        nas_dir = os.path.dirname(output_path)
+                        if nas_dir and not os.path.exists(nas_dir):
+                            os.makedirs(nas_dir, exist_ok=True)
+                        
+                        # Перемещаем файл на NAS с retry
+                        max_move_retries = 3
+                        for attempt in range(max_move_retries):
+                            try:
+                                shutil.move(temp_output, output_path)
+                                download_logger.info(f"✅ Файл перемещен на NAS: {output_path}")
+                                break
+                            except (PermissionError, OSError, shutil.Error) as e:
+                                if attempt < max_move_retries - 1:
+                                    download_logger.warning(
+                                        f"⚠️  Ошибка перемещения файла (попытка {attempt + 1}/{max_move_retries}): {e}"
+                                    )
+                                    import time
+                                    time.sleep(2)
+                                else:
+                                    download_logger.error(f"❌ Не удалось переместить файл на NAS: {e}")
+                                    download_logger.warning(f"⚠️  Файл оставлен в: {temp_output}")
+                                    return False
+                    except Exception as e:
+                        download_logger.error(f"❌ Ошибка при перемещении файла: {e}")
+                        if os.path.exists(temp_output):
+                            download_logger.warning(f"⚠️  Файл оставлен в: {temp_output}")
+                        return False
+                
                 return True
             else:
                 download_logger.error(f"❌ ffmpeg вернул ошибку: {result.stderr}")
+                # Удаляем временный файл при ошибке
+                if use_temp_file and temp_output and os.path.exists(temp_output):
+                    try:
+                        os.remove(temp_output)
+                    except:
+                        pass
                 return False
                 
         except FileNotFoundError:
             download_logger.error("❌ ffmpeg не найден. Установите: sudo apt install ffmpeg")
             return False
         except subprocess.TimeoutExpired:
-            download_logger.error("❌ Timeout при конвертации")
+            download_logger.error(f"❌ Timeout при конвертации (превышен лимит {timeout} секунд)")
+            # Удаляем временный файл при timeout
+            if use_temp_file and temp_output and os.path.exists(temp_output):
+                try:
+                    os.remove(temp_output)
+                except:
+                    pass
+            return False
+        except PermissionError as e:
+            download_logger.error(f"❌ Ошибка прав доступа при конвертации: {e}")
+            return False
+        except OSError as e:
+            download_logger.error(f"❌ Ошибка файловой системы при конвертации: {e}")
             return False
         except Exception as e:
             download_logger.error(f"❌ Ошибка конвертации: {e}")
+            import traceback
+            download_logger.error(traceback.format_exc())
             return False
 
