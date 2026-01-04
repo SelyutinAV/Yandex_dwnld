@@ -273,9 +273,12 @@ docker-compose up -d
 
 ## Обновление приложения
 
-### Через SSH (рекомендуется)
+### Способ 1: Через SSH (рекомендуется)
+
+Это самый простой и надежный способ обновления:
 
 ```bash
+# Перейдите в папку проекта
 cd /volume1/docker/yandex-downloads
 
 # Остановите контейнер
@@ -283,22 +286,66 @@ docker-compose down
 
 # Обновите код с GitHub
 git pull origin main
-# или
-git pull origin master
+# или если у вас другая ветка:
+# git pull origin master
+
+# Пересоберите образ с новым кодом
+docker-compose build --no-cache
+
+# Запустите контейнер
+docker-compose up -d
+```
+
+**Примечание**: Флаг `--no-cache` гарантирует полную пересборку. Если хотите быстрее, можно использовать `docker-compose build` без флага.
+
+### Способ 2: Через Container Manager GUI
+
+1. Откройте **Container Manager** → **Project**
+2. Найдите проект `yandex-music-downloader` и **остановите** его
+3. Подключитесь к Synology по SSH и выполните:
+   ```bash
+   cd /volume1/docker/yandex-downloads
+   git pull origin main
+   ```
+4. Вернитесь в Container Manager и **запустите** проект заново
+5. Container Manager автоматически пересоберет образ при запуске
+
+### Способ 3: Быстрое обновление (без пересборки, если изменился только код)
+
+Если изменения касаются только Python/JavaScript кода (не зависимостей):
+
+```bash
+cd /volume1/docker/yandex-downloads
+
+# Остановите контейнер
+docker-compose down
+
+# Обновите код
+git pull origin main
 
 # Пересоберите и запустите
 docker-compose up -d --build
 ```
 
-### Через Container Manager GUI
+### Что сохраняется при обновлении
 
-1. Остановите проект в Container Manager
-2. Подключитесь по SSH и выполните:
+При обновлении сохраняются:
+
+- ✅ База данных (токены, аккаунты, история загрузок)
+- ✅ Логи
+- ✅ Настройки из `.env` файла
+- ✅ Загруженная музыка (если была настроена внешняя папка)
+
+### Проверка обновления
+
+После обновления проверьте:
+
+1. Откройте приложение: `http://192.168.1.80:7777`
+2. Проверьте версию в интерфейсе (если отображается)
+3. Проверьте логи на ошибки:
    ```bash
-   cd /volume1/docker/yandex-downloads
-   git pull origin main
+   docker-compose logs yandex-music-downloader
    ```
-3. В Container Manager запустите проект заново (он автоматически пересоберет образ)
 
 ## Управление контейнером
 

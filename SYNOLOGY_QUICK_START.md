@@ -91,6 +91,20 @@ docker-compose up -d --build
 http://192.168.1.80:7777
 ```
 
+## Обновление приложения
+
+Для обновления проекта выполните:
+
+```bash
+cd /volume1/docker/yandex-downloads
+docker-compose down
+git pull origin main
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+Подробные инструкции по обновлению см. в [полной документации](./docs/SYNOLOGY_DEPLOYMENT.md#обновление-приложения).
+
 ## Полная инструкция
 
 Подробная инструкция с troubleshooting находится в файле:
