@@ -660,35 +660,47 @@ async def get_accounts():
 async def save_account_endpoint(request: SaveAccountRequest):
     """Сохранить аккаунт"""
     try:
+        logger.info(f"Попытка сохранения аккаунта: {request.name}")
+
         # Проверяем токены если они предоставлены
         if request.oauth_token:
+            logger.info("Проверка OAuth токена...")
             test_client = YandexMusicClient(request.oauth_token)
             if not test_client.connect():
+                logger.error("OAuth токен не прошел проверку")
                 raise HTTPException(
                     status_code=400, detail="OAuth токен не прошел проверку"
                 )
+            logger.info("OAuth токен проверен успешно")
 
         if request.session_id_token:
+            logger.info("Проверка Session ID токена...")
             test_client = YandexMusicClient(request.session_id_token)
             if not test_client.connect():
+                logger.error("Session ID токен не прошел проверку")
                 raise HTTPException(
                     status_code=400, detail="Session ID токен не прошел проверку"
                 )
+            logger.info("Session ID токен проверен успешно")
 
         # Получаем username из OAuth токена если не предоставлен
         username = request.username
         if not username and request.oauth_token:
             try:
+                logger.info("Получение username из OAuth токена...")
                 test_client = YandexMusicClient(request.oauth_token)
                 if test_client.connect() and test_client.client:
                     account = test_client.client.account_status()
                     if account and account.account:
                         username = account.account.login
-                        print(f"Получен username из OAuth токена: {username}")
+                        logger.info(f"Получен username из OAuth токена: {username}")
             except Exception as e:
-                print(f"Не удалось получить username из OAuth токена: {e}")
+                logger.warning(f"Не удалось получить username из OAuth токена: {e}")
 
         # Сохраняем аккаунт
+        logger.info(
+            f"Сохранение аккаунта в базу данных: name={request.name}, username={username}"
+        )
         account_id = db_manager.save_account(
             name=request.name,
             oauth_token=request.oauth_token,
@@ -696,6 +708,7 @@ async def save_account_endpoint(request: SaveAccountRequest):
             username=username,
             is_active=True,
         )
+        logger.info(f"Аккаунт успешно сохранен с ID: {account_id}")
 
         # Обновляем глобальный клиент
         update_yandex_client()
@@ -708,7 +721,10 @@ async def save_account_endpoint(request: SaveAccountRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Ошибка при сохранении аккаунта: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка сохранения аккаунта: {str(e)}"
+        )
 
 
 @app.post("/api/accounts/activate")

@@ -36,7 +36,7 @@ COPY backend/ ./
 COPY --from=frontend-builder /app/frontend/dist ./static
 
 # Создание директорий
-RUN mkdir -p /app/downloads /app/logs
+RUN mkdir -p /app/downloads /app/logs /app/data
 
 # Переменные окружения по умолчанию
 ENV API_HOST=0.0.0.0
