@@ -25,11 +25,17 @@ services:
     volumes:
       # Монтируем папку data вместо файла, чтобы Docker мог создать файл автоматически
       - ./backend/data:/app/data
+      - ./logs:/app/logs
+      
+      # Доступ к папкам Synology (для выбора папки загрузки музыки)
+      # Монтируем /volume1 хоста в /synology внутри контейнера
+      # Если ваши данные на другом volume (volume2, volumeUSB1 и т.д.), измените путь
+      - /volume1:/synology
+      
       # Папка для загрузок - монтируется только если указана в DOWNLOAD_PATH
       # Если не указана, используется внутренняя папка /app/downloads контейнера
       # Раскомментируйте следующую строку, если хотите монтировать внешнюю папку:
       # - ${DOWNLOAD_PATH}:/app/downloads
-      - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:
       # Проверяем доступность API через curl (более надежно)

@@ -91,17 +91,25 @@
    - Host path: `/volume1/docker/yandex-downloads/backend/data` (папка, не файл!)
    - Container path: `/app/data`
 
-2. **Загрузки** (опционально):
+2. **Логи**:
 
-   - Если хотите сохранять музыку на Synology, добавьте volume в docker-compose.yml:
+   - Host path: `/volume1/docker/yandex-downloads/logs`
+   - Container path: `/app/logs`
+
+3. **Доступ к папкам Synology** (обязательно для выбора папки загрузки):
+
+   - Host path: `/volume1`
+   - Container path: `/synology`
+   - **Важно**: Это позволит выбирать папки Synology через браузер папок в настройках приложения
+   - Если ваши данные на другом томе (`volume2`, `volumeUSB1` и т.д.), измените путь соответственно
+
+4. **Загрузки** (опционально, если хотите зафиксировать путь):
+
+   - Если хотите зафиксировать папку для сохранения музыки, добавьте volume в docker-compose.yml:
    - Раскомментируйте строку: `- ${DOWNLOAD_PATH}:/app/downloads`
    - Host path: `/volume1/music/yandex-downloads` (или ваша папка)
    - Container path: `/app/downloads`
-   - **Примечание**: Если не монтировать, музыка будет сохраняться внутри контейнера. Путь можно настроить позже через веб-интерфейс в разделе "Настройки".
-
-3. **Логи**:
-   - Host path: `/volume1/docker/yandex-downloads/logs`
-   - Container path: `/app/logs`
+   - **Примечание**: Это опционально. Путь можно настроить через веб-интерфейс в разделе "Настройки", выбрав папку из смонтированного `/synology`
 
 ### Шаг 6: Настройка портов
 
@@ -198,16 +206,21 @@ DEBUG=False
 **⚠️ ВАЖНО**: Эти папки должны быть созданы ДО запуска контейнера, иначе возникнет ошибка монтирования!
 
 ```bash
-# Создайте папки для данных
-mkdir -p /volume1/music/yandex-downloads
+# Создайте папки для логов и базы данных
 mkdir -p /volume1/docker/yandex-downloads/logs
 mkdir -p /volume1/docker/yandex-downloads/backend/data
 
 # Установите правильные права доступа
-chmod -R 755 /volume1/music/yandex-downloads
 chmod -R 755 /volume1/docker/yandex-downloads/logs
 chmod -R 755 /volume1/docker/yandex-downloads/backend/data
 ```
+
+**Примечание о доступе к папкам Synology**:
+
+- Docker-compose автоматически монтирует `/volume1` хоста в `/synology` внутри контейнера
+- Это позволит выбирать любые папки Synology через браузер папок в веб-интерфейсе
+- Например, папка `/volume1/public` на Synology будет доступна как `/synology/public` в приложении
+- Папку для загрузки музыки можно выбрать через настройки приложения после запуска
 
 ### Шаг 5: Запуск через docker-compose
 
