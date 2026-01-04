@@ -97,11 +97,16 @@ const FolderBrowser: React.FC<FolderBrowserProps> = ({
 
             if (response.ok) {
                 const data = await response.json()
-                // Сохраняем полную информацию о папках
-                const folders = (data.folders || []).map((folder: any) => ({
-                    name: folder.name,
-                    hasChildren: folder.hasChildren
-                }))
+                // Сохраняем полную информацию о папках, используя path из ответа API
+                const folders = (data.folders || []).map((folder: any) => {
+                    // Используем path из API, если он есть
+                    const folderPath = folder.path || (path === '/' ? `/${folder.name}` : `${path}/${folder.name}`)
+                    return {
+                        name: folder.name,
+                        path: folderPath,
+                        hasChildren: folder.hasChildren
+                    }
+                })
                 setFolderContents(prev => ({
                     ...prev,
                     [path]: folders
@@ -164,7 +169,8 @@ const FolderBrowser: React.FC<FolderBrowserProps> = ({
         if (!folders || folders.length === 0) return null
 
         return folders.map((folder) => {
-            const fullPath = buildFullPath(parentPath, folder.name)
+            // Используем path из объекта папки, если он есть, иначе строим его
+            const fullPath = (folder as any).path || buildFullPath(parentPath, folder.name)
             const isExpanded = expandedFolders.has(fullPath)
             const isSelected = selectedPath === fullPath
             const hasChildren = folder.hasChildren
