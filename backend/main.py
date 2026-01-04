@@ -1747,14 +1747,28 @@ async def create_folder(request: CreateFolderRequest):
 async def list_folders(request: ListFoldersRequest):
     """Получить список папок в указанной директории"""
     try:
+        logger.info(f"Запрос списка папок для пути: {request.path}")
         folder_path = Path(request.path)
 
+        # Проверяем существование пути
         if not folder_path.exists():
-            raise HTTPException(status_code=404, detail="Путь не существует")
+            logger.warning(f"Путь не существует: {request.path}")
+            raise HTTPException(status_code=404, detail=f"Путь не существует: {request.path}")
 
+        # Проверяем, что это директория
         if not folder_path.is_dir():
+            logger.warning(f"Путь не является директорией: {request.path}")
             raise HTTPException(
-                status_code=400, detail="Указанный путь не является директорией"
+                status_code=400, detail=f"Указанный путь не является директорией: {request.path}"
+            )
+        
+        # Проверяем права доступа
+        try:
+            folder_path.stat()
+        except PermissionError as e:
+            logger.error(f"Нет доступа к пути {request.path}: {e}")
+            raise HTTPException(
+                status_code=403, detail=f"Нет доступа к пути: {request.path}"
             )
 
         # Проверяем, не является ли это сетевой папкой
@@ -1785,38 +1799,49 @@ async def list_folders(request: ListFoldersRequest):
                 items_to_process = folder_path.iterdir()
 
             for item in items_to_process:
-                # Проверяем, что это директория (обычная или символическая ссылка на директорию)
-                is_directory = item.is_dir()
-                if not is_directory and item.is_symlink():
-                    # Проверяем, что символическая ссылка ведет на директорию
-                    try:
-                        target_path = item.resolve()
-                        is_directory = target_path.is_dir()
-                    except (OSError, PermissionError):
-                        is_directory = False
+                try:
+                    # Проверяем, что это директория (обычная или символическая ссылка на директорию)
+                    is_directory = item.is_dir()
+                    if not is_directory and item.is_symlink():
+                        # Проверяем, что символическая ссылка ведет на директорию
+                        try:
+                            target_path = item.resolve()
+                            is_directory = target_path.is_dir()
+                        except (OSError, PermissionError) as e:
+                            logger.debug(f"Не удалось разрешить символическую ссылку {item}: {e}")
+                            is_directory = False
 
-                if is_directory and not item.name.startswith("."):
-                    # Проверяем наличие подпапок с обработкой ошибок доступа
-                    has_children = False
-                    try:
-                        has_children = any(item.iterdir())
-                    except PermissionError:
-                        # Если нет доступа к содержимому, предполагаем что есть подпапки
-                        has_children = True
+                    if is_directory and not item.name.startswith("."):
+                        # Проверяем наличие подпапок с обработкой ошибок доступа
+                        has_children = False
+                        try:
+                            has_children = any(item.iterdir())
+                        except (PermissionError, OSError) as e:
+                            # Если нет доступа к содержимому, предполагаем что есть подпапки
+                            logger.debug(f"Нет доступа к содержимому {item}: {e}")
+                            has_children = True
 
-                    folders.append(
-                        {
-                            "name": item.name,
-                            "path": str(item),
-                            "hasChildren": has_children,
-                        }
-                    )
-        except PermissionError:
-            # Игнорируем папки без доступа
-            pass
+                        folders.append(
+                            {
+                                "name": item.name,
+                                "path": str(item),
+                                "hasChildren": has_children,
+                            }
+                        )
+                except (OSError, PermissionError) as e:
+                    # Игнорируем элементы без доступа
+                    logger.debug(f"Нет доступа к элементу {item}: {e}")
+                    continue
+        except (PermissionError, OSError) as e:
+            logger.error(f"Ошибка при чтении директории {folder_path}: {e}")
+            raise HTTPException(
+                status_code=403, detail=f"Нет доступа к директории: {str(e)}"
+            )
 
         # Сортируем по имени
         folders.sort(key=lambda x: x["name"].lower())
+        
+        logger.info(f"Найдено {len(folders)} папок в {request.path}")
 
         return {"path": str(folder_path), "folders": folders}
     except HTTPException:
