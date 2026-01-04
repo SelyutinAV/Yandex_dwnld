@@ -152,7 +152,7 @@ class DownloadQueueManager:
 
             query = """
                 SELECT id, track_id, title, artist, album, playlist_id, cover, status, progress, 
-                       quality, file_path, error_message, created_at, updated_at
+                       quality, error_message, created_at, updated_at
                 FROM download_queue
                 ORDER BY 
                     CASE status
@@ -468,7 +468,6 @@ class DownloadQueueManager:
         track_id: str,
         status: str,
         progress: int = 0,
-        file_path: str = None,
         error: str = None,
     ):
         """Обновить статус трека в БД"""
@@ -477,10 +476,6 @@ class DownloadQueueManager:
 
             update_fields = ["status = ?", "progress = ?", "updated_at = ?"]
             values = [status, progress, datetime.now().isoformat()]
-
-            if file_path:
-                update_fields.append("file_path = ?")
-                values.append(file_path)
 
             if error:
                 update_fields.append("error_message = ?")
@@ -582,7 +577,7 @@ class DownloadQueueManager:
 
             if result:
                 # Успешно скачан
-                self._update_track_status(track_id, "completed", 100, str(output_path))
+                self._update_track_status(track_id, "completed", 100)
 
                 # Сохраняем информацию о загруженном треке в downloaded_tracks
                 logger.info(
