@@ -37,7 +37,7 @@ services:
       # Если не указана, используется внутренняя папка /app/downloads контейнера
       # Раскомментируйте следующую строку, если хотите монтировать внешнюю папку:
       # - ${DOWNLOAD_PATH}:/app/downloads
-    restart: unless-stopped
+    restart: always  # Автозапуск контейнера после перезапуска Synology
     healthcheck:
       # Проверяем доступность API через curl (более надежно)
       test: ["CMD", "sh", "-c", "curl -f http://localhost:8000/api/health || exit 1"]
