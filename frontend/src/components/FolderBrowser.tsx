@@ -25,28 +25,28 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
     onSelect,
     children
 }) => {
+    const handleRowClick = () => {
+        console.log('Row clicked! name:', name, 'hasChildren:', hasChildren)
+        // Выбираем папку
+        onSelect()
+        // Если папка имеет детей, сразу раскрываем/закрываем её
+        if (hasChildren) {
+            console.log('Toggling folder from row click')
+            onToggle()
+        }
+    }
+
     return (
         <div className="select-none">
             <div
                 className={`flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer transition-colors ${isSelected ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800' : ''
                     }`}
                 style={{ paddingLeft: `${level * 16 + 8}px` }}
-                onClick={() => {
-                    console.log('Row clicked! name:', name)
-                    onSelect()
-                }}
+                onClick={handleRowClick}
             >
-                <button
-                    onClick={(e) => {
-                        console.log('Button clicked! name:', name, 'hasChildren:', hasChildren)
-                        e.stopPropagation()
-                        onToggle()
-                    }}
-                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0"
-                    disabled={!hasChildren}
-                >
+                <span className="text-gray-400 flex-shrink-0 text-xl">
                     {hasChildren ? (isExpanded ? '📂' : '📁') : '📄'}
-                </button>
+                </span>
                 <span className={`flex-1 text-sm ${isSelected ? 'text-primary-600 dark:text-primary-400 font-semibold' : 'text-gray-700 dark:text-gray-300'}`}>
                     {name}
                 </span>
