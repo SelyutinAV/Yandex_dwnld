@@ -78,33 +78,8 @@ if static_dir.exists():
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         """Обслуживание фронтенда для всех не-API путей"""
-        # Если путь начинается с /api, пропускаем
-        if full_path.startswith("api/"):
-            raise HTTPException(status_code=404)
-
-        # Пробуем найти файл в static
-        file_path = static_dir / full_path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(str(file_path))
-
-        # Если файл не найден, возвращаем index.html (для SPA роутинга)
-        index_path = static_dir / "index.html"
-        if index_path.exists():
-            return FileResponse(str(index_path))
-
-        raise HTTPException(status_code=404)
-
-
-# Обслуживание статических файлов фронтенда (только в production/Docker)
-static_dir = Path(__file__).parent / "static"
-if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        """Обслуживание фронтенда для всех не-API путей"""
-        # Если путь начинается с /api, пропускаем
-        if full_path.startswith("api/"):
+        # Если путь начинается с api, это API запрос - не обрабатываем здесь
+        if full_path == "api" or full_path.startswith("api/"):
             raise HTTPException(status_code=404)
 
         # Пробуем найти файл в static
