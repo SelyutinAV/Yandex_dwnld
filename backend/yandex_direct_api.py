@@ -397,7 +397,8 @@ class YandexMusicDirectAPI:
             downloaded = 0
             
             with open(output_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
+                # Увеличенный chunk_size для лучшей производительности (64 KB вместо 8 KB)
+                for chunk in response.iter_content(chunk_size=65536):
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)

@@ -866,8 +866,9 @@ class YandexMusicClient:
 
                                     try:
                                         with open(temp_encrypted, "wb") as f:
+                                            # Увеличенный chunk_size для лучшей производительности (64 KB вместо 8 KB)
                                             for chunk in response.iter_content(
-                                                chunk_size=8192
+                                                chunk_size=65536
                                             ):
                                                 if chunk:
                                                     f.write(chunk)

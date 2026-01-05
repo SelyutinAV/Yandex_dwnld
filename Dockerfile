@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     curl \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Копирование и установка Python зависимостей
